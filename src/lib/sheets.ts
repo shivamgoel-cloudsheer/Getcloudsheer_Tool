@@ -83,3 +83,86 @@ export async function fetchSheetRows(
     emailColumn: findEmailColumn(headers),
   };
 }
+
+const STATUS_COLUMN_HEADER = "Outreach Status";
+
+function columnLetter(index: number): string {
+  // 0 -> A, 25 -> Z, 26 -> AA ...
+  let letter = "";
+  let n = index + 1;
+  while (n > 0) {
+    const rem = (n - 1) % 26;
+    letter = String.fromCharCode(65 + rem) + letter;
+    n = Math.floor((n - 1) / 26);
+  }
+  return letter;
+}
+
+/**
+ * Writes per-row statuses into an "Outreach Status" column in the sheet,
+ * creating the column header if it doesn't exist yet.
+ */
+export async function writeStatusColumn(
+  accessToken: string,
+  sheetId: string,
+  updates: { row: number; status: string }[]
+): Promise<void> {
+  if (updates.length === 0) return;
+
+  const headerRes = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/A1:ZZ1`,
+    { headers: { Authorization: `Bearer ${accessToken}` }, cache: "no-store" }
+  );
+  if (!headerRes.ok) {
+    if (headerRes.status === 403) {
+      throw new Error(
+        "No write access to the sheet. Sign out and sign in again to grant it."
+      );
+    }
+    throw new Error(`Sheets API error ${headerRes.status}`);
+  }
+
+  const headerData = (await headerRes.json()) as { values?: string[][] };
+  const headers = (headerData.values?.[0] ?? []).map((h) => String(h ?? ""));
+
+  let columnIndex = headers.findIndex(
+    (h) => h.trim().toLowerCase() === STATUS_COLUMN_HEADER.toLowerCase()
+  );
+
+  const data: { range: string; values: string[][] }[] = [];
+
+  if (columnIndex === -1) {
+    columnIndex = headers.length;
+    data.push({
+      range: `${columnLetter(columnIndex)}1`,
+      values: [[STATUS_COLUMN_HEADER]],
+    });
+  }
+
+  const col = columnLetter(columnIndex);
+  for (const u of updates) {
+    data.push({ range: `${col}${u.row}`, values: [[u.status]] });
+  }
+
+  const writeRes = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values:batchUpdate`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ valueInputOption: "RAW", data }),
+    }
+  );
+
+  if (!writeRes.ok) {
+    if (writeRes.status === 403) {
+      throw new Error(
+        "No write access to the sheet. Sign out and sign in again to grant it."
+      );
+    }
+    const body = await writeRes.text();
+    throw new Error(`Sheet write failed ${writeRes.status}: ${body.slice(0, 200)}`);
+  }
+}

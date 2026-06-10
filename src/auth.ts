@@ -20,8 +20,10 @@ declare module "next-auth" {
   }
 }
 
-export const SHEETS_SCOPE =
-  "https://www.googleapis.com/auth/spreadsheets.readonly";
+// Write access so campaign status can be synced back into the sheet
+export const SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
+// Read-only inbox access for reply detection
+export const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: DrizzleAdapter(db, {
@@ -39,7 +41,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           // which we need for server-side Sheets API calls
           access_type: "offline",
           prompt: "consent",
-          scope: `openid email profile ${SHEETS_SCOPE}`,
+          scope: `openid email profile ${SHEETS_SCOPE} ${GMAIL_SCOPE}`,
         },
       },
     }),

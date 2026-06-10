@@ -63,14 +63,18 @@ export default async function DashboardPage() {
         reached: 0,
       };
       // Higher statuses imply the lower ones (clicked implies opened, etc.)
-      if (["sent", "delivered", "opened", "clicked", "bounced"].includes(row.status)) {
+      if (
+        ["sent", "delivered", "opened", "clicked", "replied", "bounced"].includes(
+          row.status
+        )
+      ) {
         stats.reached += row.count;
         totalSent += row.count;
       }
-      if (["delivered", "opened", "clicked"].includes(row.status)) {
+      if (["delivered", "opened", "clicked", "replied"].includes(row.status)) {
         stats.delivered += row.count;
       }
-      if (["opened", "clicked"].includes(row.status)) {
+      if (["opened", "clicked", "replied"].includes(row.status)) {
         stats.opened += row.count;
         totalOpened += row.count;
       }

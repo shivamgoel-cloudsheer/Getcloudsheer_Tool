@@ -28,6 +28,7 @@ const STATUS_RANK: Record<RecipientStatus, number> = {
   delivered: 3,
   opened: 4,
   clicked: 5,
+  replied: 50, // set by the reply detector, never by webhooks
   failed: 90,
   bounced: 91,
   complained: 92,

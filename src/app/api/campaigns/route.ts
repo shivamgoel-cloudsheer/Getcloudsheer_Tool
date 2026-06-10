@@ -17,6 +17,8 @@ const bodySchema = z.object({
   sheetUrl: z.string().min(1),
   subjectTemplate: z.string().min(1).max(500),
   bodyTemplate: z.string().min(1).max(100_000),
+  subjectTemplateB: z.string().max(500).optional(),
+  bodyTemplateB: z.string().max(100_000).optional(),
 });
 
 export async function POST(request: Request) {
@@ -33,6 +35,10 @@ export async function POST(request: Request) {
     );
   }
   const { name, sheetUrl, subjectTemplate, bodyTemplate } = parsed.data;
+  // A/B is active only when a B variant has real content
+  const subjectTemplateB = parsed.data.subjectTemplateB?.trim() || null;
+  const bodyTemplateB = parsed.data.bodyTemplateB?.trim() || null;
+  const hasVariantB = !!(subjectTemplateB || bodyTemplateB);
 
   const sheetId = parseSheetUrl(sheetUrl);
   if (!sheetId) {
@@ -57,6 +63,8 @@ export async function POST(request: Request) {
     const unknown = [
       ...findUnknownPlaceholders(subjectTemplate, sheet.headers),
       ...findUnknownPlaceholders(bodyTemplate, sheet.headers),
+      ...findUnknownPlaceholders(subjectTemplateB ?? "", sheet.headers),
+      ...findUnknownPlaceholders(bodyTemplateB ?? "", sheet.headers),
     ];
     if (unknown.length > 0) {
       return Response.json(
@@ -71,9 +79,10 @@ export async function POST(request: Request) {
       (h) => h.trim().toLowerCase() === "name"
     );
 
-    const validRows = sheet.rows.filter((row) =>
-      isValidEmail(row[emailColumn] ?? "")
-    );
+    // Row 1 is headers, so data row i lives at sheet row i + 2
+    const validRows = sheet.rows
+      .map((row, i) => ({ row, sheetRow: i + 2 }))
+      .filter(({ row }) => isValidEmail(row[emailColumn] ?? ""));
     const skipped = sheet.rows.length - validRows.length;
 
     if (validRows.length === 0) {
@@ -92,6 +101,8 @@ export async function POST(request: Request) {
         sheetUrl,
         subjectTemplate,
         bodyTemplate,
+        subjectTemplateB,
+        bodyTemplateB,
         status: "draft",
         total: validRows.length,
       })
@@ -101,11 +112,13 @@ export async function POST(request: Request) {
     const CHUNK = 500;
     for (let i = 0; i < validRows.length; i += CHUNK) {
       await db.insert(recipients).values(
-        validRows.slice(i, i + CHUNK).map((row) => ({
+        validRows.slice(i, i + CHUNK).map(({ row, sheetRow }, j) => ({
           campaignId: campaign.id,
           email: row[emailColumn].trim().toLowerCase(),
           name: nameColumn ? row[nameColumn] || null : null,
           rowData: row,
+          sheetRow,
+          variant: (hasVariantB && (i + j) % 2 === 1 ? "B" : "A") as "A" | "B",
           unsubscribeToken: nanoid(32),
         }))
       );

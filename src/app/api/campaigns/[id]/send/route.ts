@@ -6,6 +6,11 @@ import { db } from "@/db";
 import { campaigns, recipients, unsubscribes } from "@/db/schema";
 import { getResend } from "@/lib/resend";
 import { buildEmailBodies, renderTemplate } from "@/lib/template";
+import {
+  findTimezoneColumn,
+  isValidTimeZone,
+  zonedTimeToUtc,
+} from "@/lib/timezone";
 
 export const maxDuration = 300;
 
@@ -19,7 +24,17 @@ const MAX_SCHEDULE_AHEAD_MS = 30 * 24 * 60 * 60 * 1000;
 
 const bodySchema = z.object({
   scheduledAt: z.string().datetime({ offset: true }).optional(),
+  // Recipient-local scheduling: send at this wall-clock time in each
+  // recipient's timezone (from a Timezone sheet column), falling back
+  // to the given zone for rows without one.
+  localDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  localTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+  fallbackTimeZone: z.string().optional(),
 });
+
+type ScheduleConfig =
+  | { mode: "fixed"; at: Date }
+  | { mode: "local"; date: string; time: string; fallbackTimeZone: string };
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -39,13 +54,50 @@ export async function POST(
   const raw = await request.text();
   const parsed = bodySchema.safeParse(raw ? JSON.parse(raw) : {});
   if (!parsed.success) {
-    return Response.json({ error: "Invalid scheduledAt" }, { status: 400 });
+    return Response.json({ error: "Invalid schedule input" }, { status: 400 });
   }
 
-  let scheduledAt: Date | null = null;
-  if (parsed.data.scheduledAt) {
-    scheduledAt = new Date(parsed.data.scheduledAt);
-    const ahead = scheduledAt.getTime() - Date.now();
+  let schedule: ScheduleConfig | null = null;
+  let displayTime: Date | null = null;
+
+  if (parsed.data.localDate && parsed.data.localTime) {
+    const fallbackTimeZone = parsed.data.fallbackTimeZone ?? "UTC";
+    if (!isValidTimeZone(fallbackTimeZone)) {
+      return Response.json({ error: "Invalid timezone" }, { status: 400 });
+    }
+    const base = zonedTimeToUtc(
+      parsed.data.localDate,
+      parsed.data.localTime,
+      fallbackTimeZone
+    );
+    if (!base) {
+      return Response.json({ error: "Invalid date or time" }, { status: 400 });
+    }
+    // Validate against the fallback zone; per-recipient times may differ
+    // by up to a day but stay inside Resend's 30-day window
+    const ahead = base.getTime() - Date.now();
+    if (ahead < MIN_SCHEDULE_AHEAD_MS) {
+      return Response.json(
+        { error: "Schedule at least 2 minutes in the future" },
+        { status: 400 }
+      );
+    }
+    if (ahead > MAX_SCHEDULE_AHEAD_MS - 24 * 60 * 60 * 1000) {
+      return Response.json(
+        { error: "Resend supports scheduling at most 30 days ahead" },
+        { status: 400 }
+      );
+    }
+    schedule = {
+      mode: "local",
+      date: parsed.data.localDate,
+      time: parsed.data.localTime,
+      fallbackTimeZone,
+    };
+    displayTime = base;
+  } else if (parsed.data.scheduledAt) {
+    const at = new Date(parsed.data.scheduledAt);
+    const ahead = at.getTime() - Date.now();
     if (ahead < MIN_SCHEDULE_AHEAD_MS) {
       return Response.json(
         { error: "Schedule at least 2 minutes in the future" },
@@ -58,12 +110,14 @@ export async function POST(
         { status: 400 }
       );
     }
+    schedule = { mode: "fixed", at };
+    displayTime = at;
   }
 
   // Atomic guard: only a draft or previously failed campaign can start.
   const [campaign] = await db
     .update(campaigns)
-    .set({ status: "sending", scheduledAt })
+    .set({ status: "sending", scheduledAt: displayTime })
     .where(
       and(
         eq(campaigns.id, id),
@@ -81,16 +135,26 @@ export async function POST(
   }
 
   // Respond immediately; the send loop continues after the response.
-  after(() => runSend(campaign.id, scheduledAt));
+  after(() => runSend(campaign.id, schedule));
 
   return Response.json(
-    { status: scheduledAt ? "scheduling" : "sending" },
+    { status: schedule ? "scheduling" : "sending" },
     { status: 202 }
   );
 }
 
 type Recipient = typeof recipients.$inferSelect;
 type Campaign = typeof campaigns.$inferSelect;
+
+function templatesFor(campaign: Campaign, r: Recipient) {
+  if (r.variant === "B") {
+    return {
+      subject: campaign.subjectTemplateB || campaign.subjectTemplate,
+      body: campaign.bodyTemplateB || campaign.bodyTemplate,
+    };
+  }
+  return { subject: campaign.subjectTemplate, body: campaign.bodyTemplate };
+}
 
 function buildPayload(
   campaign: Campaign,
@@ -100,8 +164,9 @@ function buildPayload(
   const appUrl = process.env.APP_URL ?? "http://localhost:3000";
   const replyTo = process.env.RESEND_REPLY_TO;
   const unsubscribeUrl = `${appUrl}/u/${r.unsubscribeToken}`;
-  const subject = renderTemplate(campaign.subjectTemplate, r.rowData);
-  const renderedBody = renderTemplate(campaign.bodyTemplate, r.rowData);
+  const templates = templatesFor(campaign, r);
+  const subject = renderTemplate(templates.subject, r.rowData);
+  const renderedBody = renderTemplate(templates.body, r.rowData);
   const { html, text } = buildEmailBodies(renderedBody, unsubscribeUrl);
 
   return {
@@ -119,11 +184,31 @@ function buildPayload(
     tags: [
       { name: "recipient_id", value: r.id },
       { name: "campaign_id", value: campaign.id },
+      { name: "variant", value: r.variant },
+      { name: "step", value: "0" },
     ],
   };
 }
 
-async function runSend(campaignId: string, scheduledAt: Date | null) {
+/** Resolves the per-recipient send time for recipient-local scheduling. */
+function resolveRecipientTime(
+  schedule: Extract<ScheduleConfig, { mode: "local" }>,
+  r: Recipient
+): Date {
+  const tzColumn = findTimezoneColumn(Object.keys(r.rowData));
+  const tzValue = tzColumn ? r.rowData[tzColumn]?.trim() : null;
+  const tz =
+    tzValue && isValidTimeZone(tzValue) ? tzValue : schedule.fallbackTimeZone;
+  const at =
+    zonedTimeToUtc(schedule.date, schedule.time, tz) ??
+    zonedTimeToUtc(schedule.date, schedule.time, schedule.fallbackTimeZone)!;
+  // Never schedule in the past (a recipient east of the fallback zone
+  // may already be past the chosen wall-clock time)
+  const min = Date.now() + 5 * 60 * 1000;
+  return at.getTime() < min ? new Date(min) : at;
+}
+
+async function runSend(campaignId: string, schedule: ScheduleConfig | null) {
   try {
     const [campaign] = await db
       .select()
@@ -182,17 +267,17 @@ async function runSend(campaignId: string, scheduledAt: Date | null) {
     // the same run, so Resend's idempotency cache doesn't replay old results
     const runId = Date.now().toString(36);
 
-    const outcome = scheduledAt
-      ? await sendIndividually(campaign, toSend, scheduledAt, runId)
+    const outcome = schedule
+      ? await sendIndividually(campaign, toSend, schedule, runId)
       : await sendBatched(campaign, toSend, runId);
 
     const finalStatus = outcome.anySucceeded
-      ? scheduledAt
+      ? schedule
         ? "scheduled"
         : "sent"
       : outcome.anyFailed
         ? "failed"
-        : scheduledAt
+        : schedule
           ? "scheduled"
           : "sent";
 
@@ -200,7 +285,7 @@ async function runSend(campaignId: string, scheduledAt: Date | null) {
       .update(campaigns)
       .set({
         status: finalStatus,
-        ...(scheduledAt ? {} : { sentAt: new Date() }),
+        ...(schedule ? {} : { sentAt: new Date() }),
       })
       .where(eq(campaigns.id, campaign.id));
   } catch (error) {
@@ -249,7 +334,11 @@ async function sendBatched(
       for (let j = 0; j < chunk.length; j++) {
         await db
           .update(recipients)
-          .set({ status: "sent", resendEmailId: results[j]?.id ?? null })
+          .set({
+            status: "sent",
+            resendEmailId: results[j]?.id ?? null,
+            lastEmailAt: new Date(),
+          })
           .where(eq(recipients.id, chunk[j].id));
       }
       sentCount += chunk.length;
@@ -284,7 +373,7 @@ async function sendBatched(
 async function sendIndividually(
   campaign: Campaign,
   toSend: Recipient[],
-  scheduledAt: Date,
+  schedule: ScheduleConfig,
   runId: string
 ) {
   let scheduledCount = 0;
@@ -292,7 +381,9 @@ async function sendIndividually(
 
   for (let i = 0; i < toSend.length; i++) {
     const r = toSend[i];
-    const payload = buildPayload(campaign, r, scheduledAt);
+    const at =
+      schedule.mode === "fixed" ? schedule.at : resolveRecipientTime(schedule, r);
+    const payload = buildPayload(campaign, r, at);
 
     let lastError: string | null = null;
     let emailId: string | null = null;
@@ -315,7 +406,7 @@ async function sendIndividually(
       scheduledCount++;
       await db
         .update(recipients)
-        .set({ status: "scheduled", resendEmailId: emailId })
+        .set({ status: "scheduled", resendEmailId: emailId, lastEmailAt: at })
         .where(eq(recipients.id, r.id));
       await db
         .update(campaigns)

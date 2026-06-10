@@ -40,6 +40,9 @@ export default function NewCampaignPage() {
   const [name, setName] = useState("");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
+  const [abEnabled, setAbEnabled] = useState(false);
+  const [subjectB, setSubjectB] = useState("");
+  const [bodyB, setBodyB] = useState("");
   const [previewRowIndex, setPreviewRowIndex] = useState(0);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -101,6 +104,10 @@ export default function NewCampaignPage() {
           sheetUrl,
           subjectTemplate: subject,
           bodyTemplate: body,
+          ...(abEnabled && subjectB.trim()
+            ? { subjectTemplateB: subjectB }
+            : {}),
+          ...(abEnabled && bodyB.trim() ? { bodyTemplateB: bodyB } : {}),
         }),
       });
       const data = await res.json();
@@ -304,6 +311,51 @@ export default function NewCampaignPage() {
               <p className="mt-2 text-xs text-neutral-600">
                 An unsubscribe link is appended to every email automatically.
               </p>
+            </div>
+
+            {/* A/B testing */}
+            <div className="rounded-xl border border-neutral-800 bg-neutral-950/40 p-4">
+              <label className="flex cursor-pointer items-center gap-2.5">
+                <input
+                  type="checkbox"
+                  checked={abEnabled}
+                  onChange={(e) => setAbEnabled(e.target.checked)}
+                  className="h-4 w-4 rounded accent-sky-500"
+                />
+                <span className="text-sm font-medium text-neutral-200">
+                  A/B test
+                </span>
+                <span className="text-xs text-neutral-500">
+                  Half your recipients get variant B; compare results per
+                  variant
+                </span>
+              </label>
+              {abEnabled && (
+                <div className="mt-4 space-y-3">
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-neutral-400">
+                      Subject B
+                    </label>
+                    <input
+                      className={inputClass}
+                      placeholder="Alternative subject line"
+                      value={subjectB}
+                      onChange={(e) => setSubjectB(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-neutral-400">
+                      Body B (optional - leave empty to reuse body A)
+                    </label>
+                    <textarea
+                      className={`${inputClass} min-h-28 font-mono text-[13px] leading-relaxed`}
+                      placeholder="Alternative body"
+                      value={bodyB}
+                      onChange={(e) => setBodyB(e.target.value)}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
           <div className="mt-6 flex items-center justify-between">

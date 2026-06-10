@@ -24,6 +24,7 @@ export const STATUS_CHIP: Record<string, string> = {
   delivered: "bg-emerald-500/15 text-emerald-300 ring-emerald-500/30",
   opened: "bg-violet-500/15 text-violet-300 ring-violet-500/30",
   clicked: "bg-fuchsia-500/15 text-fuchsia-300 ring-fuchsia-500/30",
+  replied: "bg-teal-500/15 text-teal-300 ring-teal-500/30",
   bounced: "bg-red-500/15 text-red-300 ring-red-500/30",
   complained: "bg-red-500/15 text-red-300 ring-red-500/30",
   failed: "bg-red-500/15 text-red-300 ring-red-500/30",

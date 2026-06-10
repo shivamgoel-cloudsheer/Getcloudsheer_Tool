@@ -23,6 +23,8 @@ export const users = pgTable("user", {
   email: text("email").unique(),
   emailVerified: timestamp("emailVerified", { mode: "date" }),
   image: text("image"),
+  // Throttle for the reply-detection poller
+  lastReplyCheckAt: timestamp("last_reply_check_at"),
 });
 
 export const accounts = pgTable(
@@ -84,9 +86,12 @@ export type RecipientStatus =
   | "delivered"
   | "opened"
   | "clicked"
+  | "replied"
   | "bounced"
   | "complained"
   | "failed";
+
+export type Variant = "A" | "B";
 
 export const campaigns = pgTable(
   "campaign",
@@ -100,6 +105,9 @@ export const campaigns = pgTable(
     sheetUrl: text("sheet_url").notNull(),
     subjectTemplate: text("subject_template").notNull(),
     bodyTemplate: text("body_template").notNull(),
+    // Optional A/B variant; when set, recipients are split 50/50
+    subjectTemplateB: text("subject_template_b"),
+    bodyTemplateB: text("body_template_b"),
     status: text("status").$type<CampaignStatus>().notNull().default("draft"),
     total: integer("total").notNull().default(0),
     sentCount: integer("sent_count").notNull().default(0),
@@ -124,6 +132,13 @@ export const recipients = pgTable(
     // Mapping key for Resend webhook events
     resendEmailId: text("resend_email_id"),
     status: text("status").$type<RecipientStatus>().notNull().default("pending"),
+    variant: text("variant").$type<Variant>().notNull().default("A"),
+    // 1-based row number in the source sheet, for status write-back
+    sheetRow: integer("sheet_row"),
+    // 0 = initial email; incremented per follow-up step sent
+    sequenceStep: integer("sequence_step").notNull().default(0),
+    lastEmailAt: timestamp("last_email_at"),
+    repliedAt: timestamp("replied_at"),
     openedAt: timestamp("opened_at"),
     clickedAt: timestamp("clicked_at"),
     error: text("error"),
@@ -149,6 +164,22 @@ export const emailEvents = pgTable(
   },
   // Idempotency: each (email, event type) pair is recorded once
   (t) => [uniqueIndex("email_event_unique_idx").on(t.resendEmailId, t.type)]
+);
+
+export const sequenceSteps = pgTable(
+  "sequence_step",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    campaignId: uuid("campaign_id")
+      .notNull()
+      .references(() => campaigns.id, { onDelete: "cascade" }),
+    stepNumber: integer("step_number").notNull(), // 1, 2, 3...
+    delayDays: integer("delay_days").notNull(), // days after the previous email
+    subjectTemplate: text("subject_template").notNull(),
+    bodyTemplate: text("body_template").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("sequence_step_unique_idx").on(t.campaignId, t.stepNumber)]
 );
 
 export const unsubscribes = pgTable("unsubscribe", {
