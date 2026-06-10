@@ -28,6 +28,12 @@ const STEPS = [
   { icon: Rocket, label: "Review" },
 ];
 
+const SENDERS = [
+  { name: "Shubham", email: "shubham@cloudsheer.com" },
+  { name: "Bharat", email: "bharat@cloudsheer.com" },
+  { name: "Tushar", email: "tushar@cloudsheer.com" },
+];
+
 const inputClass =
   "w-full rounded-xl border border-neutral-800 bg-neutral-950/60 px-3.5 py-2.5 text-sm text-neutral-100 placeholder-neutral-600 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20";
 
@@ -43,8 +49,8 @@ export default function NewCampaignPage() {
   const [abEnabled, setAbEnabled] = useState(false);
   const [subjectB, setSubjectB] = useState("");
   const [bodyB, setBodyB] = useState("");
-  const [fromName, setFromName] = useState("CloudSheer");
-  const [fromEmail, setFromEmail] = useState("solutions@cloudsheer.com");
+  const [fromName, setFromName] = useState("Shubham");
+  const [fromEmail, setFromEmail] = useState("shubham@cloudsheer.com");
   const [previewRowIndex, setPreviewRowIndex] = useState(0);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -284,23 +290,39 @@ export default function NewCampaignPage() {
                 <label className="mb-1.5 block text-xs font-medium text-neutral-400">
                   From name
                 </label>
-                <input
+                <select
                   className={inputClass}
-                  placeholder="Shivam from CloudSheer"
                   value={fromName}
                   onChange={(e) => setFromName(e.target.value)}
-                />
+                >
+                  {SENDERS.map((s) => (
+                    <option key={s.name} value={s.name}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-neutral-400">
-                  From email (must be @cloudsheer.com)
+                  From email
                 </label>
-                <input
+                <select
                   className={inputClass}
-                  placeholder="solutions@cloudsheer.com"
                   value={fromEmail}
-                  onChange={(e) => setFromEmail(e.target.value)}
-                />
+                  onChange={(e) => {
+                    setFromEmail(e.target.value);
+                    const match = SENDERS.find(
+                      (s) => s.email === e.target.value
+                    );
+                    if (match) setFromName(match.name);
+                  }}
+                >
+                  {SENDERS.map((s) => (
+                    <option key={s.email} value={s.email}>
+                      {s.email}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
             <div>

@@ -19,8 +19,14 @@ const bodySchema = z.object({
   bodyTemplate: z.string().min(1).max(100_000),
   subjectTemplateB: z.string().max(500).optional(),
   bodyTemplateB: z.string().max(100_000).optional(),
-  fromName: z.string().max(100).optional(),
-  fromEmail: z.string().email().max(200).optional(),
+  fromName: z.enum(["Shubham", "Bharat", "Tushar"]).optional(),
+  fromEmail: z
+    .enum([
+      "shubham@cloudsheer.com",
+      "bharat@cloudsheer.com",
+      "tushar@cloudsheer.com",
+    ])
+    .optional(),
 });
 
 export async function POST(request: Request) {
