@@ -507,6 +507,10 @@ export default function CampaignPage({
                           />
                           Skip weekends
                         </label>
+                        <p className="text-xs text-amber-400/80">
+                          Sends happen only inside the window. A start time
+                          outside it rolls to the next window opening.
+                        </p>
                         <p className="text-xs text-neutral-500">
                           {(() => {
                             const remaining =

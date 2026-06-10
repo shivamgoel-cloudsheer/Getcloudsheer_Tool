@@ -414,6 +414,15 @@ async function sendIndividually(
       ? computeStaggeredTimes(toSend.length, schedule.base, schedule.cfg)
       : null;
 
+  // Show the real first send time, not the requested base time - the
+  // send window may have rolled it forward
+  if (staggerTimes && staggerTimes.length > 0) {
+    await db
+      .update(campaigns)
+      .set({ scheduledAt: staggerTimes[0] })
+      .where(eq(campaigns.id, campaign.id));
+  }
+
   for (let i = 0; i < toSend.length; i++) {
     const r = toSend[i];
     const at =
