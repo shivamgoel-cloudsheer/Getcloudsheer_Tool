@@ -23,16 +23,18 @@ type ResendWebhookEvent = {
 const STATUS_RANK: Record<RecipientStatus, number> = {
   pending: 0,
   suppressed: 0,
-  sent: 1,
-  delivered: 2,
-  opened: 3,
-  clicked: 4,
+  scheduled: 1,
+  sent: 2,
+  delivered: 3,
+  opened: 4,
+  clicked: 5,
   failed: 90,
   bounced: 91,
   complained: 92,
 };
 
 const EVENT_TO_STATUS: Record<string, RecipientStatus> = {
+  "email.scheduled": "scheduled",
   "email.sent": "sent",
   "email.delivered": "delivered",
   "email.opened": "opened",
@@ -97,6 +99,11 @@ export async function POST(request: Request) {
   }
 
   if (!recipient) {
+    if (!EVENT_TO_STATUS[event.type]) {
+      // Event we take no action on (e.g. email.canceled) for an email
+      // we no longer track; acknowledge it.
+      return Response.json({ received: true });
+    }
     // The send route may not have committed resend_email_id yet.
     // Return 500 so Svix retries this delivery shortly.
     return Response.json({ error: "Recipient not found yet" }, { status: 500 });

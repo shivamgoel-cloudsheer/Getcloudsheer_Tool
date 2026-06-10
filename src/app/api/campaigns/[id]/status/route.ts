@@ -53,6 +53,7 @@ export async function GET(
       subjectTemplate: campaign.subjectTemplate,
       createdAt: campaign.createdAt,
       sentAt: campaign.sentAt,
+      scheduledAt: campaign.scheduledAt,
     },
     counts,
     recipients: rows,

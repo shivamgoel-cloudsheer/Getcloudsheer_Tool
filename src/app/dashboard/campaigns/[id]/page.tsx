@@ -12,6 +12,7 @@ type CampaignStatusResponse = {
     subjectTemplate: string;
     createdAt: string;
     sentAt: string | null;
+    scheduledAt: string | null;
   };
   counts: Record<string, number>;
   recipients: {
@@ -28,6 +29,7 @@ type CampaignStatusResponse = {
 const CHIP_STYLES: Record<string, string> = {
   pending: "bg-neutral-700/50 text-neutral-300",
   suppressed: "bg-neutral-700/50 text-neutral-500",
+  scheduled: "bg-amber-500/15 text-amber-400",
   sent: "bg-sky-500/15 text-sky-400",
   delivered: "bg-emerald-500/15 text-emerald-400",
   opened: "bg-violet-500/15 text-violet-400",
@@ -46,6 +48,8 @@ export default function CampaignPage({
   const [data, setData] = useState<CampaignStatusResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
+  const [showSchedule, setShowSchedule] = useState(false);
+  const [scheduleTime, setScheduleTime] = useState("");
 
   const refresh = useCallback(async () => {
     try {
@@ -70,16 +74,42 @@ export default function CampaignPage({
     };
   }, [refresh]);
 
-  async function startSend() {
+  async function startSend(scheduledAt?: string) {
     setSending(true);
     setError(null);
     try {
-      const res = await fetch(`/api/campaigns/${id}/send`, { method: "POST" });
+      const res = await fetch(`/api/campaigns/${id}/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          scheduledAt
+            ? { scheduledAt: new Date(scheduledAt).toISOString() }
+            : {}
+        ),
+      });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Failed to start sending");
+      setShowSchedule(false);
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to start sending");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function cancelSchedule() {
+    setSending(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/campaigns/${id}/cancel-schedule`, {
+        method: "POST",
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Failed to cancel schedule");
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to cancel schedule");
     } finally {
       setSending(false);
     }
@@ -123,22 +153,74 @@ export default function CampaignPage({
           </p>
         </div>
         {(campaign.status === "draft" || campaign.status === "failed") && (
-          <button
-            onClick={startSend}
-            disabled={sending}
-            className="rounded-lg bg-emerald-500 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-emerald-400 disabled:opacity-40"
-          >
-            {sending
-              ? "Starting..."
-              : campaign.status === "failed"
-                ? "Retry failed sends"
-                : `Send to ${campaign.total} recipients`}
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            {showSchedule ? (
+              <>
+                <input
+                  type="datetime-local"
+                  value={scheduleTime}
+                  onChange={(e) => setScheduleTime(e.target.value)}
+                  className="rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-sky-500 [color-scheme:dark]"
+                />
+                <button
+                  onClick={() => startSend(scheduleTime)}
+                  disabled={sending || !scheduleTime}
+                  className="rounded-lg bg-amber-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-amber-400 disabled:opacity-40"
+                >
+                  {sending ? "Scheduling..." : "Schedule"}
+                </button>
+                <button
+                  onClick={() => setShowSchedule(false)}
+                  className="rounded-lg border border-neutral-700 px-3 py-2 text-sm text-neutral-400 transition hover:bg-neutral-800"
+                >
+                  Back
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => startSend()}
+                  disabled={sending}
+                  className="rounded-lg bg-emerald-500 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-emerald-400 disabled:opacity-40"
+                >
+                  {sending
+                    ? "Starting..."
+                    : campaign.status === "failed"
+                      ? "Retry failed sends"
+                      : `Send to ${campaign.total} recipients`}
+                </button>
+                <button
+                  onClick={() => setShowSchedule(true)}
+                  disabled={sending}
+                  className="rounded-lg border border-neutral-700 px-4 py-2.5 text-sm text-neutral-300 transition hover:bg-neutral-800 disabled:opacity-40"
+                >
+                  Schedule for later
+                </button>
+              </>
+            )}
+          </div>
         )}
         {campaign.status === "sending" && (
           <span className="rounded-full bg-amber-500/15 px-4 py-1.5 text-sm text-amber-400">
-            Sending... {campaign.sentCount}/{campaign.total}
+            Working... {campaign.sentCount}/{campaign.total}
           </span>
+        )}
+        {campaign.status === "scheduled" && (
+          <div className="flex items-center gap-3">
+            <span className="rounded-full bg-amber-500/15 px-4 py-1.5 text-sm text-amber-400">
+              Scheduled for{" "}
+              {campaign.scheduledAt
+                ? new Date(campaign.scheduledAt).toLocaleString()
+                : "later"}
+            </span>
+            <button
+              onClick={cancelSchedule}
+              disabled={sending}
+              className="rounded-lg border border-red-500/40 px-4 py-2 text-sm text-red-400 transition hover:bg-red-500/10 disabled:opacity-40"
+            >
+              {sending ? "Cancelling..." : "Cancel schedule"}
+            </button>
+          </div>
         )}
       </div>
 

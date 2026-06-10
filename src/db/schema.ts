@@ -69,11 +69,17 @@ export const verificationTokens = pgTable(
 // App tables
 // ---------------------------------------------------------------------------
 
-export type CampaignStatus = "draft" | "sending" | "sent" | "failed";
+export type CampaignStatus =
+  | "draft"
+  | "sending"
+  | "scheduled"
+  | "sent"
+  | "failed";
 
 export type RecipientStatus =
   | "pending"
   | "suppressed"
+  | "scheduled"
   | "sent"
   | "delivered"
   | "opened"
@@ -99,6 +105,7 @@ export const campaigns = pgTable(
     sentCount: integer("sent_count").notNull().default(0),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     sentAt: timestamp("sent_at"),
+    scheduledAt: timestamp("scheduled_at"),
   },
   (t) => [index("campaign_user_idx").on(t.userId)]
 );

@@ -9,6 +9,7 @@ export const dynamic = "force-dynamic";
 const STATUS_STYLES: Record<string, string> = {
   draft: "bg-neutral-700/50 text-neutral-300",
   sending: "bg-amber-500/15 text-amber-400",
+  scheduled: "bg-amber-500/15 text-amber-400",
   sent: "bg-emerald-500/15 text-emerald-400",
   failed: "bg-red-500/15 text-red-400",
 };
@@ -99,7 +100,9 @@ export default async function DashboardPage() {
                       <p className="truncate font-medium">{campaign.name}</p>
                       <p className="mt-1 text-xs text-neutral-500">
                         {campaign.total} recipients ·{" "}
-                        {campaign.createdAt.toLocaleDateString()}
+                        {campaign.status === "scheduled" && campaign.scheduledAt
+                          ? `scheduled for ${campaign.scheduledAt.toLocaleString()}`
+                          : campaign.createdAt.toLocaleDateString()}
                       </p>
                     </div>
                     <div className="flex shrink-0 items-center gap-6">
