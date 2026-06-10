@@ -1,6 +1,21 @@
 "use client";
 
-import { use, useCallback, useEffect, useState } from "react";
+import { use, useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import {
+  ArrowLeft,
+  CalendarClock,
+  CheckCheck,
+  Eye,
+  Loader2,
+  Mail,
+  MousePointerClick,
+  RefreshCw,
+  Send,
+  TriangleAlert,
+  X,
+} from "lucide-react";
+import { StatusChip } from "@/components/ui";
 
 type CampaignStatusResponse = {
   campaign: {
@@ -26,19 +41,6 @@ type CampaignStatusResponse = {
   }[];
 };
 
-const CHIP_STYLES: Record<string, string> = {
-  pending: "bg-neutral-700/50 text-neutral-300",
-  suppressed: "bg-neutral-700/50 text-neutral-500",
-  scheduled: "bg-amber-500/15 text-amber-400",
-  sent: "bg-sky-500/15 text-sky-400",
-  delivered: "bg-emerald-500/15 text-emerald-400",
-  opened: "bg-violet-500/15 text-violet-400",
-  clicked: "bg-fuchsia-500/15 text-fuchsia-400",
-  bounced: "bg-red-500/15 text-red-400",
-  complained: "bg-red-500/15 text-red-400",
-  failed: "bg-red-500/15 text-red-400",
-};
-
 export default function CampaignPage({
   params,
 }: {
@@ -50,6 +52,7 @@ export default function CampaignPage({
   const [sending, setSending] = useState(false);
   const [showSchedule, setShowSchedule] = useState(false);
   const [scheduleTime, setScheduleTime] = useState("");
+  const [filter, setFilter] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -115,11 +118,22 @@ export default function CampaignPage({
     }
   }
 
+  const visibleRecipients = useMemo(() => {
+    if (!data) return [];
+    if (!filter) return data.recipients;
+    return data.recipients.filter((r) => r.status === filter);
+  }, [data, filter]);
+
   if (!data) {
     return (
-      <p className="text-sm text-neutral-500">
-        {error ?? "Loading campaign..."}
-      </p>
+      <div className="flex items-center justify-center py-32 text-neutral-500">
+        {error ?? (
+          <span className="inline-flex items-center gap-2 text-sm">
+            <Loader2 size={15} className="animate-spin" />
+            Loading campaign
+          </span>
+        )}
+      </div>
     );
   }
 
@@ -133,25 +147,74 @@ export default function CampaignPage({
   const reached = delivered + bounced + (counts.sent ?? 0);
 
   const pct = (n: number) =>
-    reached > 0 ? `${Math.round((n / reached) * 100)}%` : "0%";
+    reached > 0 ? Math.round((n / reached) * 100) : 0;
 
   const stats = [
-    { label: "Sent", value: campaign.sentCount, sub: `of ${campaign.total}` },
-    { label: "Delivered", value: delivered, sub: pct(delivered) },
-    { label: "Opened", value: opened, sub: pct(opened) },
-    { label: "Clicked", value: clicked, sub: pct(clicked) },
-    { label: "Bounced", value: bounced, sub: pct(bounced) },
+    {
+      icon: Mail,
+      label: "Sent",
+      value: campaign.sentCount,
+      sub: `of ${campaign.total}`,
+      bar: campaign.total > 0 ? (campaign.sentCount / campaign.total) * 100 : 0,
+      barClass: "bg-neutral-500",
+    },
+    {
+      icon: CheckCheck,
+      label: "Delivered",
+      value: delivered,
+      sub: `${pct(delivered)}%`,
+      bar: pct(delivered),
+      barClass: "bg-emerald-500",
+    },
+    {
+      icon: Eye,
+      label: "Opened",
+      value: opened,
+      sub: `${pct(opened)}%`,
+      bar: pct(opened),
+      barClass: "bg-violet-500",
+    },
+    {
+      icon: MousePointerClick,
+      label: "Clicked",
+      value: clicked,
+      sub: `${pct(clicked)}%`,
+      bar: pct(clicked),
+      barClass: "bg-fuchsia-500",
+    },
+    {
+      icon: TriangleAlert,
+      label: "Bounced",
+      value: bounced,
+      sub: `${pct(bounced)}%`,
+      bar: pct(bounced),
+      barClass: "bg-red-500",
+    },
   ];
+
+  const filterOptions = Object.entries(counts).sort((a, b) => b[1] - a[1]);
 
   return (
     <div>
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold">{campaign.name}</h1>
-          <p className="mt-1 text-xs text-neutral-500">
+      <Link
+        href="/dashboard"
+        className="inline-flex items-center gap-1.5 text-xs text-neutral-500 transition hover:text-neutral-300"
+      >
+        <ArrowLeft size={13} />
+        Back to campaigns
+      </Link>
+
+      <div className="mt-3 flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0">
+          <div className="flex items-center gap-3">
+            <h1 className="truncate text-xl font-semibold">{campaign.name}</h1>
+            <StatusChip status={campaign.status} />
+          </div>
+          <p className="mt-1 truncate text-sm text-neutral-500">
             Subject: {campaign.subjectTemplate}
           </p>
         </div>
+
         {(campaign.status === "draft" || campaign.status === "failed") && (
           <div className="flex flex-wrap items-center gap-2">
             {showSchedule ? (
@@ -160,20 +223,22 @@ export default function CampaignPage({
                   type="datetime-local"
                   value={scheduleTime}
                   onChange={(e) => setScheduleTime(e.target.value)}
-                  className="rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-sky-500 [color-scheme:dark]"
+                  className="rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-sky-500 [color-scheme:dark]"
                 />
                 <button
                   onClick={() => startSend(scheduleTime)}
                   disabled={sending || !scheduleTime}
-                  className="rounded-lg bg-amber-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-amber-400 disabled:opacity-40"
+                  className="inline-flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-amber-400 disabled:opacity-40"
                 >
+                  <CalendarClock size={15} />
                   {sending ? "Scheduling..." : "Schedule"}
                 </button>
                 <button
                   onClick={() => setShowSchedule(false)}
-                  className="rounded-lg border border-neutral-700 px-3 py-2 text-sm text-neutral-400 transition hover:bg-neutral-800"
+                  className="rounded-xl border border-neutral-800 p-2.5 text-neutral-400 transition hover:bg-neutral-900"
+                  title="Back"
                 >
-                  Back
+                  <X size={15} />
                 </button>
               </>
             ) : (
@@ -181,8 +246,15 @@ export default function CampaignPage({
                 <button
                   onClick={() => startSend()}
                   disabled={sending}
-                  className="rounded-lg bg-emerald-500 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-emerald-400 disabled:opacity-40"
+                  className="inline-flex items-center gap-2 rounded-xl bg-linear-to-br from-emerald-500 to-teal-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 transition hover:brightness-110 disabled:opacity-40"
                 >
+                  {sending ? (
+                    <Loader2 size={15} className="animate-spin" />
+                  ) : campaign.status === "failed" ? (
+                    <RefreshCw size={15} />
+                  ) : (
+                    <Send size={15} />
+                  )}
                   {sending
                     ? "Starting..."
                     : campaign.status === "failed"
@@ -192,92 +264,167 @@ export default function CampaignPage({
                 <button
                   onClick={() => setShowSchedule(true)}
                   disabled={sending}
-                  className="rounded-lg border border-neutral-700 px-4 py-2.5 text-sm text-neutral-300 transition hover:bg-neutral-800 disabled:opacity-40"
+                  className="inline-flex items-center gap-2 rounded-xl border border-neutral-800 px-4 py-2.5 text-sm text-neutral-300 transition hover:bg-neutral-900 disabled:opacity-40"
                 >
-                  Schedule for later
+                  <CalendarClock size={15} />
+                  Schedule
                 </button>
               </>
             )}
           </div>
         )}
+
         {campaign.status === "sending" && (
-          <span className="rounded-full bg-amber-500/15 px-4 py-1.5 text-sm text-amber-400">
+          <span className="inline-flex items-center gap-2 rounded-full bg-amber-500/15 px-4 py-2 text-sm text-amber-300 ring-1 ring-inset ring-amber-500/30">
+            <Loader2 size={14} className="animate-spin" />
             Working... {campaign.sentCount}/{campaign.total}
           </span>
         )}
+
         {campaign.status === "scheduled" && (
-          <div className="flex items-center gap-3">
-            <span className="rounded-full bg-amber-500/15 px-4 py-1.5 text-sm text-amber-400">
-              Scheduled for{" "}
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-2 rounded-full bg-amber-500/15 px-4 py-2 text-sm text-amber-300 ring-1 ring-inset ring-amber-500/30">
+              <CalendarClock size={14} />
               {campaign.scheduledAt
                 ? new Date(campaign.scheduledAt).toLocaleString()
-                : "later"}
+                : "Scheduled"}
             </span>
             <button
               onClick={cancelSchedule}
               disabled={sending}
-              className="rounded-lg border border-red-500/40 px-4 py-2 text-sm text-red-400 transition hover:bg-red-500/10 disabled:opacity-40"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-red-500/40 px-4 py-2 text-sm text-red-300 transition hover:bg-red-500/10 disabled:opacity-40"
             >
-              {sending ? "Cancelling..." : "Cancel schedule"}
+              <X size={14} />
+              {sending ? "Cancelling..." : "Cancel"}
             </button>
           </div>
         )}
       </div>
 
-      {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
+      {error && (
+        <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+          {error}
+        </div>
+      )}
 
-      <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-5">
+      <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         {stats.map((s) => (
           <div
             key={s.label}
-            className="rounded-xl border border-neutral-800 bg-neutral-900 p-4"
+            className="rounded-2xl border border-neutral-800/80 bg-neutral-900/60 p-4"
           >
-            <p className="text-xs text-neutral-500">{s.label}</p>
-            <p className="mt-1 text-2xl font-semibold">{s.value}</p>
-            <p className="text-xs text-neutral-500">{s.sub}</p>
+            <div className="flex items-center gap-2 text-neutral-500">
+              <s.icon size={14} />
+              <p className="text-xs">{s.label}</p>
+            </div>
+            <div className="mt-2 flex items-baseline gap-2">
+              <p className="text-2xl font-semibold tracking-tight">{s.value}</p>
+              <p className="text-xs text-neutral-500">{s.sub}</p>
+            </div>
+            <div className="mt-3 h-1 overflow-hidden rounded-full bg-neutral-800">
+              <div
+                className={`h-full rounded-full ${s.barClass}`}
+                style={{ width: `${Math.min(s.bar, 100)}%` }}
+              />
+            </div>
           </div>
         ))}
       </div>
 
-      <div className="mt-6 overflow-x-auto rounded-xl border border-neutral-800">
+      <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button
+            onClick={() => setFilter(null)}
+            className={`rounded-full px-3 py-1 text-xs transition ${
+              filter === null
+                ? "bg-neutral-200 font-medium text-neutral-900"
+                : "border border-neutral-800 text-neutral-400 hover:bg-neutral-900"
+            }`}
+          >
+            All ({recipients.length})
+          </button>
+          {filterOptions.map(([status, count]) => (
+            <button
+              key={status}
+              onClick={() => setFilter(filter === status ? null : status)}
+              className={`rounded-full px-3 py-1 text-xs transition ${
+                filter === status
+                  ? "bg-neutral-200 font-medium text-neutral-900"
+                  : "border border-neutral-800 text-neutral-400 hover:bg-neutral-900"
+              }`}
+            >
+              {status} ({count})
+            </button>
+          ))}
+        </div>
+        <span className="inline-flex items-center gap-1.5 text-xs text-neutral-600">
+          <span className="relative flex h-1.5 w-1.5">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
+            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
+          </span>
+          Live, refreshes every 5s
+        </span>
+      </div>
+
+      <div className="mt-3 overflow-x-auto rounded-2xl border border-neutral-800/80">
         <table className="w-full text-left text-sm">
-          <thead className="bg-neutral-900 text-xs text-neutral-400">
+          <thead className="bg-neutral-900/80 text-xs text-neutral-400">
             <tr>
               <th className="px-4 py-3 font-medium">Recipient</th>
               <th className="px-4 py-3 font-medium">Status</th>
-              <th className="px-4 py-3 font-medium">Opened</th>
-              <th className="px-4 py-3 font-medium">Clicked</th>
+              <th className="hidden px-4 py-3 font-medium sm:table-cell">
+                Opened
+              </th>
+              <th className="hidden px-4 py-3 font-medium sm:table-cell">
+                Clicked
+              </th>
             </tr>
           </thead>
           <tbody>
-            {recipients.map((r) => (
-              <tr key={r.id} className="border-t border-neutral-800/70">
-                <td className="px-4 py-2.5">
-                  <p className="text-neutral-200">{r.email}</p>
-                  {r.name && (
-                    <p className="text-xs text-neutral-500">{r.name}</p>
-                  )}
-                  {r.error && (
-                    <p className="text-xs text-red-400">{r.error}</p>
-                  )}
+            {visibleRecipients.map((r) => (
+              <tr
+                key={r.id}
+                className="border-t border-neutral-800/60 transition hover:bg-neutral-900/40"
+              >
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-neutral-800 text-[11px] font-medium text-neutral-300">
+                      {(r.name ?? r.email).charAt(0).toUpperCase()}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="truncate text-neutral-200">{r.email}</p>
+                      {r.name && (
+                        <p className="truncate text-xs text-neutral-500">
+                          {r.name}
+                        </p>
+                      )}
+                      {r.error && (
+                        <p className="mt-0.5 text-xs text-red-400">{r.error}</p>
+                      )}
+                    </div>
+                  </div>
                 </td>
-                <td className="px-4 py-2.5">
-                  <span
-                    className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                      CHIP_STYLES[r.status] ?? CHIP_STYLES.pending
-                    }`}
-                  >
-                    {r.status}
-                  </span>
+                <td className="px-4 py-3">
+                  <StatusChip status={r.status} />
                 </td>
-                <td className="px-4 py-2.5 text-xs text-neutral-400">
+                <td className="hidden px-4 py-3 text-xs text-neutral-400 sm:table-cell">
                   {r.openedAt ? new Date(r.openedAt).toLocaleString() : "-"}
                 </td>
-                <td className="px-4 py-2.5 text-xs text-neutral-400">
+                <td className="hidden px-4 py-3 text-xs text-neutral-400 sm:table-cell">
                   {r.clickedAt ? new Date(r.clickedAt).toLocaleString() : "-"}
                 </td>
               </tr>
             ))}
+            {visibleRecipients.length === 0 && (
+              <tr>
+                <td
+                  colSpan={4}
+                  className="px-4 py-10 text-center text-sm text-neutral-500"
+                >
+                  No recipients match this filter.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
