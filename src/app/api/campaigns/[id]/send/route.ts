@@ -11,12 +11,7 @@ import {
 } from "@/db/schema";
 import { getResend } from "@/lib/resend";
 import { buildEmailBodies, renderTemplate } from "@/lib/template";
-import {
-  findTimezoneColumn,
-  isValidTimeZone,
-  zonedTimeToUtc,
-  tzDateKey,
-} from "@/lib/timezone";
+import { isValidTimeZone, tzDateKey } from "@/lib/timezone";
 import { computeStaggeredTimes, type StaggerConfig } from "@/lib/stagger";
 import { getSenderCommitments } from "@/lib/senderBudget";
 import { capForDayFn, WARMUP_WINDOW_DAYS } from "@/lib/warmup";
@@ -47,13 +42,9 @@ const DEFAULT_STAGGER: StaggerConfig = {
 };
 
 const bodySchema = z.object({
+  // Optional drip start time. It becomes the BASE of the stagger, not a single
+  // instant everyone is sent at - so the per-sender cap always applies.
   scheduledAt: z.string().datetime({ offset: true }).optional(),
-  // Recipient-local scheduling: send at this wall-clock time in each
-  // recipient's timezone (from a Timezone sheet column), falling back
-  // to the given zone for rows without one.
-  localDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  localTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
-  fallbackTimeZone: z.string().optional(),
   // Drip settings: spread sends out instead of one burst (the only send mode)
   stagger: z
     .object({
@@ -80,10 +71,8 @@ function toStored(cfg: StaggerConfig): StoredStaggerConfig {
   };
 }
 
-type ScheduleConfig =
-  | { mode: "fixed"; at: Date }
-  | { mode: "local"; date: string; time: string; fallbackTimeZone: string }
-  | { mode: "stagger"; base: Date; cfg: StaggerConfig };
+// Every send is a drip. The only choice is when it starts and on what terms.
+type ScheduleConfig = { base: Date; cfg: StaggerConfig };
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -100,19 +89,35 @@ export async function POST(
 
   const { id } = await params;
 
+  // Refuse to send while the footer still has an unfilled placeholder address
+  // (CAN-SPAM needs a real one). Read-only check; the atomic guard below still
+  // enforces ownership and state.
+  const [existing] = await db
+    .select({ fromAddress: campaigns.fromAddress })
+    .from(campaigns)
+    .where(and(eq(campaigns.id, id), eq(campaigns.userId, session.user.id)));
+  if (existing && /\[.+\]/.test(mailingAddressFor(existing.fromAddress))) {
+    return Response.json(
+      {
+        error:
+          "Add a real postal address before sending - the footer still contains a [PLACEHOLDER]. Edit src/lib/senders.ts or set MAILING_ADDRESS.",
+      },
+      { status: 400 }
+    );
+  }
+
   const raw = await request.text();
   const parsed = bodySchema.safeParse(raw ? JSON.parse(raw) : {});
   if (!parsed.success) {
     return Response.json({ error: "Invalid schedule input" }, { status: 400 });
   }
 
-  let schedule: ScheduleConfig | null = null;
-  let displayTime: Date | null = null;
-  // Persisted so background follow-ups drip on the same terms as the send.
-  let storedConfig: StoredStaggerConfig = toStored(DEFAULT_STAGGER);
+  // Every path resolves to a drip: only the base time and the config differ.
+  let base = new Date();
+  let cfg: StaggerConfig = DEFAULT_STAGGER;
 
   if (parsed.data.stagger) {
-    const cfg = parsed.data.stagger;
+    cfg = parsed.data.stagger;
     if (!isValidTimeZone(cfg.timeZone)) {
       return Response.json({ error: "Invalid timezone" }, { status: 400 });
     }
@@ -122,49 +127,9 @@ export async function POST(
         { status: 400 }
       );
     }
-    const base = parsed.data.scheduledAt
-      ? new Date(parsed.data.scheduledAt)
-      : new Date();
-    schedule = { mode: "stagger", base, cfg };
-    displayTime = base;
-    storedConfig = toStored(cfg);
-  } else if (parsed.data.localDate && parsed.data.localTime) {
-    const fallbackTimeZone = parsed.data.fallbackTimeZone ?? "UTC";
-    if (!isValidTimeZone(fallbackTimeZone)) {
-      return Response.json({ error: "Invalid timezone" }, { status: 400 });
-    }
-    const base = zonedTimeToUtc(
-      parsed.data.localDate,
-      parsed.data.localTime,
-      fallbackTimeZone
-    );
-    if (!base) {
-      return Response.json({ error: "Invalid date or time" }, { status: 400 });
-    }
-    // Validate against the fallback zone; per-recipient times may differ
-    // by up to a day but stay inside Resend's 30-day window
-    const ahead = base.getTime() - Date.now();
-    if (ahead < MIN_SCHEDULE_AHEAD_MS) {
-      return Response.json(
-        { error: "Schedule at least 2 minutes in the future" },
-        { status: 400 }
-      );
-    }
-    if (ahead > MAX_SCHEDULE_AHEAD_MS - 24 * 60 * 60 * 1000) {
-      return Response.json(
-        { error: "Resend supports scheduling at most 30 days ahead" },
-        { status: 400 }
-      );
-    }
-    schedule = {
-      mode: "local",
-      date: parsed.data.localDate,
-      time: parsed.data.localTime,
-      fallbackTimeZone,
-    };
-    displayTime = base;
-    storedConfig = toStored({ ...DEFAULT_STAGGER, timeZone: fallbackTimeZone });
+    if (parsed.data.scheduledAt) base = new Date(parsed.data.scheduledAt);
   } else if (parsed.data.scheduledAt) {
+    // A bare scheduledAt is the drip's start time, not everyone's send time.
     const at = new Date(parsed.data.scheduledAt);
     const ahead = at.getTime() - Date.now();
     if (ahead < MIN_SCHEDULE_AHEAD_MS) {
@@ -179,18 +144,13 @@ export async function POST(
         { status: 400 }
       );
     }
-    schedule = { mode: "fixed", at };
-    displayTime = at;
+    base = at;
   }
 
-  // No explicit schedule -> drip with defaults. Sending is never an immediate
-  // burst; every campaign goes out staggered.
-  if (!schedule) {
-    const base = new Date();
-    schedule = { mode: "stagger", base, cfg: DEFAULT_STAGGER };
-    displayTime = base;
-    storedConfig = toStored(DEFAULT_STAGGER);
-  }
+  const schedule: ScheduleConfig = { base, cfg };
+  const displayTime = base;
+  // Persisted so background follow-ups drip on the same terms as the send.
+  const storedConfig: StoredStaggerConfig = toStored(cfg);
 
   // Atomic guard: only a draft or previously failed campaign can start.
   const [campaign] = await db
@@ -273,24 +233,6 @@ function buildPayload(
       { name: "step", value: "0" },
     ],
   };
-}
-
-/** Resolves the per-recipient send time for recipient-local scheduling. */
-function resolveRecipientTime(
-  schedule: Extract<ScheduleConfig, { mode: "local" }>,
-  r: Recipient
-): Date {
-  const tzColumn = findTimezoneColumn(Object.keys(r.rowData));
-  const tzValue = tzColumn ? r.rowData[tzColumn]?.trim() : null;
-  const tz =
-    tzValue && isValidTimeZone(tzValue) ? tzValue : schedule.fallbackTimeZone;
-  const at =
-    zonedTimeToUtc(schedule.date, schedule.time, tz) ??
-    zonedTimeToUtc(schedule.date, schedule.time, schedule.fallbackTimeZone)!;
-  // Never schedule in the past (a recipient east of the fallback zone
-  // may already be past the chosen wall-clock time)
-  const min = Date.now() + 5 * 60 * 1000;
-  return at.getTime() < min ? new Date(min) : at;
 }
 
 async function runSend(campaignId: string, schedule: ScheduleConfig) {
@@ -384,38 +326,39 @@ async function sendIndividually(
   let anyFailed = false;
 
   const MAX_HORIZON_MS = 29 * 24 * 60 * 60 * 1000;
+  const cfg = schedule.cfg;
 
-  let staggerTimes: Date[] | null = null;
-  if (schedule.mode === "stagger") {
-    const cfg = schedule.cfg;
-    // Per-sender daily budget: count what this mailbox has already committed
-    // across all campaigns so two campaigns can't double its daily volume.
-    const sender = campaign.fromAddress ?? process.env.RESEND_FROM ?? "";
-    const { byDay, firstSendAt } = await getSenderCommitments(
-      campaign.userId,
-      sender,
-      cfg.timeZone
-    );
-    const startDayKey = tzDateKey(firstSendAt ?? new Date(), cfg.timeZone);
-    const warm =
-      firstSendAt != null &&
-      Date.now() - firstSendAt.getTime() >
-        WARMUP_WINDOW_DAYS * 24 * 60 * 60 * 1000;
-    const capForDay = capForDayFn(
-      cfg.dailyCap,
-      cfg.warmup ?? false,
-      startDayKey,
-      warm
-    );
-    staggerTimes = computeStaggeredTimes(toSend.length, schedule.base, cfg, {
-      committedByDay: byDay,
-      capForDay,
-    });
-  }
+  // Per-sender daily budget: count what this mailbox has already committed
+  // across all campaigns so two campaigns can't double its daily volume.
+  const sender = campaign.fromAddress ?? process.env.RESEND_FROM ?? "";
+  const { byDay, firstSendAt } = await getSenderCommitments(
+    campaign.userId,
+    sender,
+    cfg.timeZone
+  );
+  const startDayKey = tzDateKey(firstSendAt ?? new Date(), cfg.timeZone);
+  const warm =
+    firstSendAt != null &&
+    Date.now() - firstSendAt.getTime() >
+      WARMUP_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+  const capForDay = capForDayFn(
+    cfg.dailyCap,
+    cfg.warmup ?? false,
+    startDayKey,
+    warm
+  );
+  const staggerTimes = computeStaggeredTimes(toSend.length, schedule.base, cfg, {
+    committedByDay: byDay,
+    capForDay,
+  });
+
+  // Running per-day tally (seeded from existing commitments) so the cap is
+  // hard-enforced right before each send, not only inside the allocator.
+  const committed = new Map(byDay);
 
   // Show the real first send time, not the requested base time - the
   // send window may have rolled it forward
-  if (staggerTimes && staggerTimes.length > 0) {
+  if (staggerTimes.length > 0) {
     await db
       .update(campaigns)
       .set({ scheduledAt: staggerTimes[0] })
@@ -431,12 +374,7 @@ async function sendIndividually(
         .set({ lastProgressAt: new Date() })
         .where(eq(campaigns.id, campaign.id));
     }
-    const at =
-      schedule.mode === "fixed"
-        ? schedule.at
-        : schedule.mode === "stagger"
-          ? staggerTimes![i]
-          : resolveRecipientTime(schedule, r);
+    const at = staggerTimes[i];
 
     if (at.getTime() > Date.now() + MAX_HORIZON_MS) {
       anyFailed = true;
@@ -446,6 +384,21 @@ async function sendIndividually(
           status: "failed",
           error:
             "Beyond Resend's 30-day scheduling window. Raise the daily cap or shorten the gap.",
+        })
+        .where(eq(recipients.id, r.id));
+      continue;
+    }
+
+    // Hard cap guard: never exceed the sender's daily budget for this day,
+    // even if a concurrent campaign filled it after times were computed.
+    const dayKey = tzDateKey(at, cfg.timeZone);
+    if ((committed.get(dayKey) ?? 0) >= capForDay(dayKey)) {
+      anyFailed = true;
+      await db
+        .update(recipients)
+        .set({
+          status: "failed",
+          error: `Daily cap for this sender reached on ${dayKey}. Lower volume, widen the window, or split senders.`,
         })
         .where(eq(recipients.id, r.id));
       continue;
@@ -472,6 +425,7 @@ async function sendIndividually(
 
     if (emailId) {
       scheduledCount++;
+      committed.set(dayKey, (committed.get(dayKey) ?? 0) + 1);
       await db
         .update(recipients)
         .set({ status: "scheduled", resendEmailId: emailId, lastEmailAt: at })

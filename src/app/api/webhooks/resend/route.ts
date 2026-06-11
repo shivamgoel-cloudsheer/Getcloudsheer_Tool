@@ -107,8 +107,14 @@ export async function POST(request: Request) {
       // we no longer track; acknowledge it.
       return Response.json({ received: true });
     }
-    // The send route may not have committed resend_email_id yet.
-    // Return 500 so Svix retries this delivery shortly.
+    // Usually the send route just hasn't committed resend_email_id yet, so a
+    // 500 lets Svix retry shortly. But an old event for a recipient that no
+    // longer exists (e.g. its campaign was deleted) will never resolve - ack
+    // those so Svix stops retrying them forever.
+    const tsSec = Number(svixHeaders["svix-timestamp"]) || 0;
+    if (tsSec && Date.now() - tsSec * 1000 > 15 * 60 * 1000) {
+      return Response.json({ received: true });
+    }
     return Response.json({ error: "Recipient not found yet" }, { status: 500 });
   }
 

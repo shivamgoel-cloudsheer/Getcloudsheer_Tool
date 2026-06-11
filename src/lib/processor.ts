@@ -255,12 +255,19 @@ export async function processUser(userId: string): Promise<ProcessResult> {
           committedByDay: byDay,
           capForDay,
         });
+        // Running tally so the per-sender cap is hard-enforced at send time.
+        const committed = new Map(byDay);
 
         for (let i = 0; i < items.length; i++) {
           const { campaign, step, recipient: r } = items[i];
           const at = times[i];
           // Past Resend's 30-day window: leave it for a future run.
           if (at.getTime() > now + MAX_HORIZON_MS) continue;
+
+          // Cap guard: if this day is already full (e.g. a concurrent send
+          // filled it), leave the follow-up for the next run.
+          const dayKey = tzDateKey(at, cfg.timeZone);
+          if ((committed.get(dayKey) ?? 0) >= capForDay(dayKey)) continue;
 
           const unsubscribeUrl = `${appUrl}/u/${r.unsubscribeToken}`;
           const subject = renderTemplate(step.subjectTemplate, r.rowData);
@@ -297,6 +304,7 @@ export async function processUser(userId: string): Promise<ProcessResult> {
           );
 
           if (!error && data) {
+            committed.set(dayKey, (committed.get(dayKey) ?? 0) + 1);
             await db
               .update(recipients)
               .set({

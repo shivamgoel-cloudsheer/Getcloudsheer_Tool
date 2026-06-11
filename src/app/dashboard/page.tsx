@@ -28,8 +28,7 @@ export default async function DashboardPage() {
 
   type Stats = {
     delivered: number;
-    opened: number;
-    clicked: number;
+    replied: number;
     bounced: number;
     reached: number;
   };
@@ -57,12 +56,11 @@ export default async function DashboardPage() {
     for (const row of counts) {
       const stats = statsByCampaign.get(row.campaignId) ?? {
         delivered: 0,
-        opened: 0,
-        clicked: 0,
+        replied: 0,
         bounced: 0,
         reached: 0,
       };
-      // Higher statuses imply the lower ones (clicked implies opened, etc.)
+      // Higher statuses imply the lower ones (a reply implies delivery, etc.)
       if (
         ["sent", "delivered", "opened", "clicked", "replied", "bounced"].includes(
           row.status
@@ -75,11 +73,12 @@ export default async function DashboardPage() {
         stats.delivered += row.count;
       }
       if (["opened", "clicked", "replied"].includes(row.status)) {
-        stats.opened += row.count;
         totalOpened += row.count;
       }
-      if (row.status === "replied") totalReplied += row.count;
-      if (row.status === "clicked") stats.clicked += row.count;
+      if (row.status === "replied") {
+        stats.replied += row.count;
+        totalReplied += row.count;
+      }
       if (row.status === "bounced") stats.bounced += row.count;
       statsByCampaign.set(row.campaignId, stats);
     }
@@ -157,9 +156,9 @@ export default async function DashboardPage() {
         <ul className="mt-6 space-y-3">
           {list.map((campaign) => {
             const stats = statsByCampaign.get(campaign.id);
-            const openPct =
+            const replyPct =
               stats && stats.reached > 0
-                ? Math.round((stats.opened / stats.reached) * 100)
+                ? Math.round((stats.replied / stats.reached) * 100)
                 : 0;
             return (
               <li key={campaign.id}>
@@ -198,23 +197,23 @@ export default async function DashboardPage() {
                         <div className="hidden items-center gap-6 sm:flex">
                           <div className="text-right">
                             <p className="text-sm font-semibold text-neutral-200">
-                              {stats.opened}
+                              {stats.replied}
                               <span className="ml-1 text-xs font-normal text-neutral-500">
-                                opened
+                                replied
                               </span>
                             </p>
                             <div className="mt-1.5 h-1 w-28 overflow-hidden rounded-full bg-neutral-800">
                               <div
-                                className="h-full rounded-full bg-linear-to-r from-sky-400 to-indigo-500"
-                                style={{ width: `${openPct}%` }}
+                                className="h-full rounded-full bg-linear-to-r from-teal-400 to-emerald-500"
+                                style={{ width: `${replyPct}%` }}
                               />
                             </div>
                           </div>
                           <div className="text-right">
                             <p className="text-sm font-semibold text-neutral-200">
-                              {stats.clicked}
+                              {stats.delivered}
                             </p>
-                            <p className="text-xs text-neutral-500">clicked</p>
+                            <p className="text-xs text-neutral-500">delivered</p>
                           </div>
                         </div>
                       )}

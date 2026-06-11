@@ -62,7 +62,9 @@ function hasShortener(text: string): boolean {
 }
 
 function spamHits(text: string): string[] {
-  const lower = text.toLowerCase();
+  // "feel free [to reply]" is the most common cold-email closer - don't let it
+  // trip the "free" trigger.
+  const lower = text.toLowerCase().replace(/feel free/g, " ");
   return SPAM_PHRASES.filter((p) => {
     const re = new RegExp(`\\b${p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
     return re.test(lower);

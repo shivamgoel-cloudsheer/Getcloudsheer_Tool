@@ -7,13 +7,11 @@ import {
   ArrowLeft,
   CalendarClock,
   CheckCheck,
-  Eye,
   FlaskConical,
   ListPlus,
   Loader2,
   Mail,
   MessageSquareReply,
-  MousePointerClick,
   RefreshCw,
   Send,
   Trash2,
@@ -261,12 +259,9 @@ export default function CampaignPage({
       const reached = group.filter((r) =>
         ["sent", ...ENGAGED, "bounced", "complained"].includes(r.status)
       ).length;
-      const opened = group.filter((r) =>
-        ["opened", "clicked", "replied"].includes(r.status)
-      ).length;
-      const clicked = group.filter((r) => r.status === "clicked").length;
+      const delivered = group.filter((r) => ENGAGED.includes(r.status)).length;
       const replied = group.filter((r) => r.repliedAt).length;
-      return { total: group.length, reached, opened, clicked, replied };
+      return { total: group.length, reached, delivered, replied };
     };
     return { A: compute("A"), B: compute("B") };
   }, [data]);
@@ -292,14 +287,14 @@ export default function CampaignPage({
     (counts.opened ?? 0) +
     (counts.clicked ?? 0) +
     replied;
-  const opened = (counts.opened ?? 0) + (counts.clicked ?? 0) + replied;
-  const clicked = counts.clicked ?? 0;
   const bounced = (counts.bounced ?? 0) + (counts.complained ?? 0);
   const reached = delivered + bounced + (counts.sent ?? 0);
 
   const pct = (n: number) =>
     reached > 0 ? Math.round((n / reached) * 100) : 0;
 
+  // Reply-centric: opens/clicks are omitted (text-only cold email has no
+  // tracking pixel or rewritten links, so they'd always read ~0).
   const stats = [
     {
       icon: Mail,
@@ -316,22 +311,6 @@ export default function CampaignPage({
       sub: `${pct(delivered)}%`,
       bar: pct(delivered),
       barClass: "bg-emerald-500",
-    },
-    {
-      icon: Eye,
-      label: "Opened",
-      value: opened,
-      sub: `${pct(opened)}%`,
-      bar: pct(opened),
-      barClass: "bg-violet-500",
-    },
-    {
-      icon: MousePointerClick,
-      label: "Clicked",
-      value: clicked,
-      sub: `${pct(clicked)}%`,
-      bar: pct(clicked),
-      barClass: "bg-fuchsia-500",
     },
     {
       icon: MessageSquareReply,
@@ -622,7 +601,7 @@ export default function CampaignPage({
         </div>
       )}
 
-      <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+      <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         {stats.map((s) => (
           <div
             key={s.label}
@@ -669,14 +648,12 @@ export default function CampaignPage({
                       {s.total} recipients
                     </span>
                   </p>
-                  <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-center">
                     <div>
-                      <p className="text-lg font-semibold">{rate(s.opened)}</p>
-                      <p className="text-xs text-neutral-500">opened</p>
-                    </div>
-                    <div>
-                      <p className="text-lg font-semibold">{rate(s.clicked)}</p>
-                      <p className="text-xs text-neutral-500">clicked</p>
+                      <p className="text-lg font-semibold">
+                        {rate(s.delivered)}
+                      </p>
+                      <p className="text-xs text-neutral-500">delivered</p>
                     </div>
                     <div>
                       <p className="text-lg font-semibold">{rate(s.replied)}</p>
@@ -846,9 +823,6 @@ export default function CampaignPage({
                 Step
               </th>
               <th className="hidden px-4 py-3 font-medium md:table-cell">
-                Opened
-              </th>
-              <th className="hidden px-4 py-3 font-medium md:table-cell">
                 Replied
               </th>
             </tr>
@@ -889,9 +863,6 @@ export default function CampaignPage({
                   {r.sequenceStep > 0 ? `+${r.sequenceStep}` : "-"}
                 </td>
                 <td className="hidden px-4 py-3 text-xs text-neutral-400 md:table-cell">
-                  {r.openedAt ? new Date(r.openedAt).toLocaleString() : "-"}
-                </td>
-                <td className="hidden px-4 py-3 text-xs text-neutral-400 md:table-cell">
                   {r.repliedAt ? new Date(r.repliedAt).toLocaleString() : "-"}
                 </td>
               </tr>
@@ -899,7 +870,7 @@ export default function CampaignPage({
             {visibleRecipients.length === 0 && (
               <tr>
                 <td
-                  colSpan={campaign.hasVariantB ? 6 : 5}
+                  colSpan={campaign.hasVariantB ? 5 : 4}
                   className="px-4 py-10 text-center text-sm text-neutral-500"
                 >
                   No recipients match this filter.
