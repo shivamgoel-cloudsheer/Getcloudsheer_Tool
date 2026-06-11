@@ -195,7 +195,12 @@ export async function POST(
   // Atomic guard: only a draft or previously failed campaign can start.
   const [campaign] = await db
     .update(campaigns)
-    .set({ status: "sending", scheduledAt: displayTime, staggerConfig: storedConfig })
+    .set({
+      status: "sending",
+      scheduledAt: displayTime,
+      staggerConfig: storedConfig,
+      lastProgressAt: new Date(),
+    })
     .where(
       and(
         eq(campaigns.id, id),
@@ -419,6 +424,13 @@ async function sendIndividually(
 
   for (let i = 0; i < toSend.length; i++) {
     const r = toSend[i];
+    // Heartbeat so the cron reconciler can tell a live run from a dead one.
+    if (i % 15 === 0) {
+      await db
+        .update(campaigns)
+        .set({ lastProgressAt: new Date() })
+        .where(eq(campaigns.id, campaign.id));
+    }
     const at =
       schedule.mode === "fixed"
         ? schedule.at

@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { recipients, unsubscribes } from "@/db/schema";
 import { cancelScheduledForEmail } from "@/lib/suppress";
+import { escapeHtml } from "@/lib/template";
 
 function page(body: string): Response {
   return new Response(
@@ -55,7 +56,7 @@ export async function GET(
 
   return page(`
     <h1>Unsubscribe</h1>
-    <p>Stop receiving emails at <strong>${recipient.email}</strong>?</p>
+    <p>Stop receiving emails at <strong>${escapeHtml(recipient.email)}</strong>?</p>
     <form method="POST">
       <button type="submit">Unsubscribe</button>
     </form>
@@ -80,6 +81,6 @@ export async function POST(
   await cancelScheduledForEmail(recipient.email);
 
   return page(
-    `<h1>You're unsubscribed</h1><p><strong>${recipient.email}</strong> won't receive any more emails from us.</p>`
+    `<h1>You're unsubscribed</h1><p><strong>${escapeHtml(recipient.email)}</strong> won't receive any more emails from us.</p>`
   );
 }

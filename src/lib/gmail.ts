@@ -73,8 +73,11 @@ export async function findRepliesFrom(
       const at = msg.internalDate
         ? new Date(Number(msg.internalDate))
         : new Date();
+      // Keep the most recent message from this sender. The caller compares it
+      // against when we last emailed them, so an older pre-existing thread
+      // can't hide a genuine reply that arrived after our send.
       const existing = replies.get(sender);
-      if (!existing || at < existing) {
+      if (!existing || at > existing) {
         replies.set(sender, at);
       }
     }

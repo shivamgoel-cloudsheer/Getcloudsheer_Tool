@@ -132,6 +132,9 @@ export const campaigns = pgTable(
     createdAt: timestamp("created_at").notNull().defaultNow(),
     sentAt: timestamp("sent_at"),
     scheduledAt: timestamp("scheduled_at"),
+    // Heartbeat written while a send/cancel loop runs. A stale value on a
+    // "sending" campaign means the background job died; the cron reconciles it.
+    lastProgressAt: timestamp("last_progress_at"),
   },
   (t) => [index("campaign_user_idx").on(t.userId)]
 );

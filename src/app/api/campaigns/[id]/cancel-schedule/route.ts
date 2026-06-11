@@ -27,7 +27,7 @@ export async function POST(
   // Atomic guard: only a scheduled campaign can be cancelled
   const [campaign] = await db
     .update(campaigns)
-    .set({ status: "sending" }) // transient state while cancelling
+    .set({ status: "sending", lastProgressAt: new Date() }) // transient state while cancelling
     .where(
       and(
         eq(campaigns.id, id),
@@ -64,6 +64,13 @@ async function runCancel(campaignId: string) {
 
     for (let i = 0; i < scheduled.length; i++) {
       const r = scheduled[i];
+      // Heartbeat so the reconciler doesn't mistake a long cancel for a stall.
+      if (i % 15 === 0) {
+        await db
+          .update(campaigns)
+          .set({ lastProgressAt: new Date() })
+          .where(eq(campaigns.id, campaignId));
+      }
       const { error } = await getResend().emails.cancel(r.resendEmailId!);
 
       if (!error) {

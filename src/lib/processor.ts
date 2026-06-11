@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, lt, or } from "drizzle-orm";
 import { db } from "@/db";
 import {
   campaigns,
@@ -76,6 +76,25 @@ export async function processUser(userId: string): Promise<ProcessResult> {
     result.errors.push(e instanceof Error ? e.message : "Google auth failed");
     return result;
   }
+
+  // Reconcile stuck sends: a "sending" campaign whose heartbeat has gone stale
+  // means its background job was killed mid-run (typically a function timeout
+  // on a large drip). Flip it to "failed" so the Retry button works again -
+  // per-recipient state is tracked, so retrying resumes safely.
+  const STALE_SENDING_MS = 10 * 60 * 1000;
+  await db
+    .update(campaigns)
+    .set({ status: "failed" })
+    .where(
+      and(
+        eq(campaigns.userId, userId),
+        eq(campaigns.status, "sending"),
+        or(
+          isNull(campaigns.lastProgressAt),
+          lt(campaigns.lastProgressAt, new Date(Date.now() - STALE_SENDING_MS))
+        )
+      )
+    );
 
   const userCampaigns = await db
     .select()
@@ -204,7 +223,6 @@ export async function processUser(userId: string): Promise<ProcessResult> {
       }
 
       const appUrl = process.env.APP_URL ?? "http://localhost:3000";
-      const runId = now.toString(36);
 
       for (const [sender, items] of bySender) {
         // Oldest-due first.
@@ -272,7 +290,9 @@ export async function processUser(userId: string): Promise<ProcessResult> {
               ],
             },
             {
-              idempotencyKey: `followup-${campaign.id}-s${step.stepNumber}-${runId}-r${r.id}`,
+              // Stable per (campaign, step, recipient): if the dashboard poll
+              // and the cron overlap, Resend collapses them into one send.
+              idempotencyKey: `followup-${campaign.id}-s${step.stepNumber}-r${r.id}`,
             }
           );
 
