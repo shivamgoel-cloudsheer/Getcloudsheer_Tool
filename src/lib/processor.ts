@@ -17,7 +17,7 @@ import { computeStaggeredTimes, type StaggerConfig } from "@/lib/stagger";
 import { getSenderCommitments } from "@/lib/senderBudget";
 import { capForDayFn, WARMUP_WINDOW_DAYS } from "@/lib/warmup";
 import { tzDateKey } from "@/lib/timezone";
-import { mailingAddressFor, replyToFor, signatureFor } from "@/lib/senders";
+import { replyToFor, signatureFor } from "@/lib/senders";
 
 const ACTIVE_STATUSES = ["sent", "delivered", "opened", "clicked"] as const;
 const DELAY_BETWEEN_SENDS_MS = 600;
@@ -269,11 +269,9 @@ export async function processUser(userId: string): Promise<ProcessResult> {
 
           const subject = renderTemplate(step.subjectTemplate, r.rowData);
           const body = renderTemplate(step.bodyTemplate, r.rowData);
-          // Plain-text, no unsubscribe link/header (see send route) so
-          // follow-ups land in Primary too. Opt-out is reply-based.
+          // Plain-text, no footer (see send route): body + signature only.
           const { text } = buildEmailBodies(
             body,
-            mailingAddressFor(campaign.fromAddress),
             campaign.signature ?? signatureFor(campaign.fromAddress)
           );
 

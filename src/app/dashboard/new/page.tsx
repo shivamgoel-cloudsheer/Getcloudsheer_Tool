@@ -441,8 +441,8 @@ export default function NewCampaignPage() {
                 ))}
               </div>
               <p className="mt-2 text-xs text-neutral-600">
-                A reply-based opt-out line and your postal address are appended
-                automatically.
+                Emails send as plain text - just your body and signature, no
+                footer.
               </p>
             </div>
 
@@ -566,13 +566,6 @@ export default function NewCampaignPage() {
                 {signature.trim() && (
                   <div className="mt-4 text-neutral-700">{signature}</div>
                 )}
-              </div>
-              <div className="border-t border-neutral-100 px-5 py-3 text-xs text-neutral-400">
-                If this isn&apos;t relevant, just reply and I&apos;ll stop
-                reaching out.
-                <br />
-                CloudSheer Consulting, 6614 Avenue U, #1019, Brooklyn, New York
-                11234, USA
               </div>
             </div>
 

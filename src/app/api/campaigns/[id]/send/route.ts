@@ -15,7 +15,7 @@ import { isValidTimeZone, tzDateKey } from "@/lib/timezone";
 import { computeStaggeredTimes, type StaggerConfig } from "@/lib/stagger";
 import { getSenderCommitments } from "@/lib/senderBudget";
 import { capForDayFn, WARMUP_WINDOW_DAYS } from "@/lib/warmup";
-import { mailingAddressFor, replyToFor, signatureFor } from "@/lib/senders";
+import { replyToFor, signatureFor } from "@/lib/senders";
 
 export const maxDuration = 300;
 
@@ -88,23 +88,6 @@ export async function POST(
   }
 
   const { id } = await params;
-
-  // Refuse to send while the footer still has an unfilled placeholder address
-  // (CAN-SPAM needs a real one). Read-only check; the atomic guard below still
-  // enforces ownership and state.
-  const [existing] = await db
-    .select({ fromAddress: campaigns.fromAddress })
-    .from(campaigns)
-    .where(and(eq(campaigns.id, id), eq(campaigns.userId, session.user.id)));
-  if (existing && /\[.+\]/.test(mailingAddressFor(existing.fromAddress))) {
-    return Response.json(
-      {
-        error:
-          "Add a real postal address before sending - the footer still contains a [PLACEHOLDER]. Edit src/lib/senders.ts or set MAILING_ADDRESS.",
-      },
-      { status: 400 }
-    );
-  }
 
   const raw = await request.text();
   const parsed = bodySchema.safeParse(raw ? JSON.parse(raw) : {});
@@ -207,11 +190,10 @@ function buildPayload(
   const templates = templatesFor(campaign, r);
   const subject = renderTemplate(templates.subject, r.rowData);
   const renderedBody = renderTemplate(templates.body, r.rowData);
-  // Plain-text, no List-Unsubscribe header, no unsubscribe link: cold 1:1 mail
-  // lands in Primary. Opt-out is reply-based; the postal address stays.
+  // Plain-text, no footer of any kind (no unsubscribe link/header, no postal
+  // address) for a fully 1:1 look. Just body + signature.
   const { text } = buildEmailBodies(
     renderedBody,
-    mailingAddressFor(campaign.fromAddress),
     campaign.signature ?? signatureFor(campaign.fromAddress)
   );
 
