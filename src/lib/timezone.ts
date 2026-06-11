@@ -54,6 +54,18 @@ export function zonedTimeToUtc(
   return new Date(utc);
 }
 
+/** The calendar day ("YYYY-MM-DD") that an instant falls on in a timezone. */
+export function tzDateKey(date: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
 const TZ_HEADER_CANDIDATES = ["timezone", "time zone", "tz"];
 
 export function findTimezoneColumn(headers: string[]): string | null {

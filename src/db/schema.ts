@@ -93,6 +93,18 @@ export type RecipientStatus =
 
 export type Variant = "A" | "B";
 
+// Drip/stagger settings, persisted so background follow-ups reuse the same
+// window, gap, daily cap, weekend rule, and warm-up as the initial send.
+export type StoredStaggerConfig = {
+  gapMinutes: number;
+  dailyCap: number;
+  windowStart: string;
+  windowEnd: string;
+  skipWeekends: boolean;
+  timeZone: string;
+  warmup: boolean;
+};
+
 export const campaigns = pgTable(
   "campaign",
   {
@@ -110,6 +122,10 @@ export const campaigns = pgTable(
     bodyTemplateB: text("body_template_b"),
     // Per-campaign sender ("Name <email@domain>"); falls back to RESEND_FROM
     fromAddress: text("from_address"),
+    // Sign-off appended to every email (initial + follow-ups), above the footer
+    signature: text("signature"),
+    // Drip settings used for this campaign; reused by follow-up scheduling
+    staggerConfig: jsonb("stagger_config").$type<StoredStaggerConfig>(),
     status: text("status").$type<CampaignStatus>().notNull().default("draft"),
     total: integer("total").notNull().default(0),
     sentCount: integer("sent_count").notNull().default(0),

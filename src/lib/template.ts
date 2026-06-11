@@ -45,30 +45,41 @@ function escapeHtml(text: string): string {
 /**
  * Builds the HTML and plain-text bodies for an email. If the rendered body
  * already looks like HTML it is passed through; otherwise newlines become
- * <br/> tags. An unsubscribe footer is always appended.
+ * <br/> tags. An unsubscribe footer plus the sender's physical postal address
+ * (a CAN-SPAM requirement) is always appended.
  */
 export function buildEmailBodies(
   renderedBody: string,
-  unsubscribeUrl: string
+  unsubscribeUrl: string,
+  mailingAddress: string,
+  signature?: string | null
 ): { html: string; text: string } {
   const looksLikeHtml = /<[a-z][\s\S]*>/i.test(renderedBody);
+  const sig = signature?.trim() || "";
 
   const htmlBody = looksLikeHtml
     ? renderedBody
     : escapeHtml(renderedBody).replace(/\r?\n/g, "<br/>");
+  const htmlSig = sig
+    ? `<p style="margin-top: 16px;">${escapeHtml(sig).replace(/\r?\n/g, "<br/>")}</p>`
+    : "";
 
   const html = `<!DOCTYPE html>
 <html>
   <body style="font-family: Arial, Helvetica, sans-serif; font-size: 14px; line-height: 1.6; color: #1a1a1a;">
     <div>${htmlBody}</div>
+    ${htmlSig}
     <p style="margin-top: 32px; font-size: 12px; color: #888888;">
       If you'd prefer not to receive these emails, you can
       <a href="${unsubscribeUrl}" style="color: #888888;">unsubscribe here</a>.
     </p>
+    <p style="margin-top: 8px; font-size: 12px; color: #aaaaaa;">${escapeHtml(
+      mailingAddress
+    )}</p>
   </body>
 </html>`;
 
-  const text = `${renderedBody}\n\n----\nIf you'd prefer not to receive these emails, unsubscribe here: ${unsubscribeUrl}`;
+  const text = `${renderedBody}${sig ? `\n\n${sig}` : ""}\n\n----\nIf you'd prefer not to receive these emails, unsubscribe here: ${unsubscribeUrl}\n${mailingAddress}`;
 
   return { html, text };
 }

@@ -11,6 +11,8 @@ import {
   parseSheetUrl,
 } from "@/lib/sheets";
 import { findUnknownPlaceholders } from "@/lib/template";
+import { lintContent } from "@/lib/linter";
+import { signatureFor } from "@/lib/senders";
 
 const bodySchema = z.object({
   name: z.string().min(1).max(200),
@@ -19,14 +21,11 @@ const bodySchema = z.object({
   bodyTemplate: z.string().min(1).max(100_000),
   subjectTemplateB: z.string().max(500).optional(),
   bodyTemplateB: z.string().max(100_000).optional(),
-  fromName: z.enum(["Shubham", "Bharat", "Tushar"]).optional(),
-  fromEmail: z
-    .enum([
-      "shubham@cloudsheer.com",
-      "bharat@cloudsheer.com",
-      "tushar@cloudsheer.com",
-    ])
-    .optional(),
+  // Any sender name/email is allowed (custom sender). Note: Resend can only
+  // deliver from a domain verified in your account.
+  fromName: z.string().max(100).optional(),
+  fromEmail: z.string().email().max(200).optional(),
+  signature: z.string().max(2000).optional(),
 });
 
 export async function POST(request: Request) {
@@ -48,13 +47,22 @@ export async function POST(request: Request) {
   const bodyTemplateB = parsed.data.bodyTemplateB?.trim() || null;
   const hasVariantB = !!(subjectTemplateB || bodyTemplateB);
 
-  const fromEmail = parsed.data.fromEmail?.trim() || null;
-  const fromName = parsed.data.fromName?.trim().replace(/[<>]/g, "") || null;
+  // Strip characters that could break the From header (newlines, angle
+  // brackets, commas) before composing "Name <email>".
+  const fromEmail =
+    parsed.data.fromEmail?.trim().toLowerCase().replace(/[\r\n<>,]/g, "") ||
+    null;
+  const fromName =
+    parsed.data.fromName?.trim().replace(/[\r\n<>]/g, "") || null;
   const fromAddress = fromEmail
     ? fromName
       ? `${fromName} <${fromEmail}>`
       : fromEmail
     : null;
+  // Stored sign-off: the user's text, else the default for this sender.
+  const signature =
+    parsed.data.signature?.trim() ||
+    (fromAddress ? signatureFor(fromAddress) : null);
 
   const sheetId = parseSheetUrl(sheetUrl);
   if (!sheetId) {
@@ -96,10 +104,21 @@ export async function POST(request: Request) {
     );
 
     // Row 1 is headers, so data row i lives at sheet row i + 2
-    const validRows = sheet.rows
+    const withValidEmail = sheet.rows
       .map((row, i) => ({ row, sheetRow: i + 2 }))
       .filter(({ row }) => isValidEmail(row[emailColumn] ?? ""));
-    const skipped = sheet.rows.length - validRows.length;
+    const skippedInvalid = sheet.rows.length - withValidEmail.length;
+
+    // Dedup on lowercased email: keep the first occurrence, drop the rest.
+    const seen = new Set<string>();
+    const validRows: { row: Record<string, string>; sheetRow: number }[] = [];
+    for (const entry of withValidEmail) {
+      const key = entry.row[emailColumn].trim().toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      validRows.push(entry);
+    }
+    const skippedDuplicates = withValidEmail.length - validRows.length;
 
     if (validRows.length === 0) {
       return Response.json(
@@ -107,6 +126,17 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
+
+    // Deliverability warnings (non-blocking) on the composed content.
+    const warnings = [
+      ...lintContent({ subject: subjectTemplate, body: bodyTemplate }),
+      ...(hasVariantB
+        ? lintContent({
+            subject: subjectTemplateB ?? subjectTemplate,
+            body: bodyTemplateB ?? bodyTemplate,
+          })
+        : []),
+    ].map((w) => w.message);
 
     const [campaign] = await db
       .insert(campaigns)
@@ -120,6 +150,7 @@ export async function POST(request: Request) {
         subjectTemplateB,
         bodyTemplateB,
         fromAddress,
+        signature,
         status: "draft",
         total: validRows.length,
       })
@@ -144,7 +175,9 @@ export async function POST(request: Request) {
     return Response.json({
       id: campaign.id,
       total: validRows.length,
-      skippedInvalidEmails: skipped,
+      skippedInvalidEmails: skippedInvalid,
+      skippedDuplicates,
+      warnings,
     });
   } catch (error) {
     return Response.json(

@@ -76,13 +76,12 @@ export default function CampaignPage({
   const [processing, setProcessing] = useState(false);
   const [showSchedule, setShowSchedule] = useState(false);
   const [scheduleTime, setScheduleTime] = useState("");
-  const [localTimeMode, setLocalTimeMode] = useState(false);
-  const [staggerEnabled, setStaggerEnabled] = useState(true);
   const [gapMinutes, setGapMinutes] = useState(3);
-  const [dailyCap, setDailyCap] = useState(50);
+  const [dailyCap, setDailyCap] = useState(40);
   const [windowStart, setWindowStart] = useState("09:00");
   const [windowEnd, setWindowEnd] = useState("17:00");
   const [skipWeekends, setSkipWeekends] = useState(true);
+  const [warmup, setWarmup] = useState(true);
   const [filter, setFilter] = useState<string | null>(null);
   const [showAddStep, setShowAddStep] = useState(false);
   const [stepDelay, setStepDelay] = useState(3);
@@ -112,42 +111,26 @@ export default function CampaignPage({
     };
   }, [refresh]);
 
-  async function startSend(schedule?: {
-    time: string;
-    localMode: boolean;
-    stagger: boolean;
-  }) {
+  // Sending is always a drip. An optional start time only moves when the
+  // first email goes out; the send still spreads over the window.
+  async function startSend() {
     setSending(true);
     setError(null);
     try {
-      let body: Record<string, unknown> = {};
-      if (schedule) {
-        if (schedule.stagger) {
-          body = {
-            ...(schedule.time
-              ? { scheduledAt: new Date(schedule.time).toISOString() }
-              : {}),
-            stagger: {
-              gapMinutes,
-              dailyCap,
-              windowStart,
-              windowEnd,
-              skipWeekends,
-              timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-            },
-          };
-        } else if (schedule.localMode) {
-          const [date, time] = schedule.time.split("T");
-          body = {
-            localDate: date,
-            localTime: time,
-            fallbackTimeZone:
-              Intl.DateTimeFormat().resolvedOptions().timeZone,
-          };
-        } else {
-          body = { scheduledAt: new Date(schedule.time).toISOString() };
-        }
-      }
+      const body = {
+        ...(scheduleTime
+          ? { scheduledAt: new Date(scheduleTime).toISOString() }
+          : {}),
+        stagger: {
+          gapMinutes,
+          dailyCap,
+          windowStart,
+          windowEnd,
+          skipWeekends,
+          warmup,
+          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        },
+      };
       const res = await fetch(`/api/campaigns/${id}/send`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -419,7 +402,7 @@ export default function CampaignPage({
               {showSchedule ? (
                 <div className="w-full max-w-md rounded-2xl border border-neutral-800 bg-neutral-900/80 p-4 sm:w-auto">
                   <div className="flex items-center justify-between">
-                    <p className="text-sm font-semibold">Send options</p>
+                    <p className="text-sm font-semibold">Drip send options</p>
                     <button
                       onClick={() => setShowSchedule(false)}
                       className="rounded-lg p-1.5 text-neutral-500 transition hover:bg-neutral-800 hover:text-neutral-300"
@@ -433,11 +416,9 @@ export default function CampaignPage({
                     <div>
                       <label className="mb-1 block text-xs text-neutral-400">
                         Start time{" "}
-                        {staggerEnabled && (
-                          <span className="text-neutral-600">
-                            (leave empty to start now)
-                          </span>
-                        )}
+                        <span className="text-neutral-600">
+                          (leave empty to start now)
+                        </span>
                       </label>
                       <input
                         type="datetime-local"
@@ -447,185 +428,148 @@ export default function CampaignPage({
                       />
                     </div>
 
-                    <label className="flex cursor-pointer items-center gap-2 text-xs text-neutral-300">
-                      <input
-                        type="checkbox"
-                        checked={staggerEnabled}
-                        onChange={(e) => {
-                          setStaggerEnabled(e.target.checked);
-                          if (e.target.checked) setLocalTimeMode(false);
-                        }}
-                        className="h-3.5 w-3.5 rounded accent-sky-500"
-                      />
-                      <span className="font-medium">Drip sending</span>
-                      <span className="text-neutral-500">
-                        space emails out instead of one burst (recommended)
-                      </span>
-                    </label>
+                    <p className="text-xs text-neutral-500">
+                      Every campaign is dripped: emails go out one at a time
+                      with a gap, only inside the window, capped per day per
+                      sender.
+                    </p>
 
-                    {staggerEnabled && (
-                      <div className="space-y-2.5 rounded-xl border border-neutral-800 bg-neutral-950/50 p-3">
-                        <div className="grid grid-cols-2 gap-2.5">
-                          <div>
-                            <label className="mb-1 block text-xs text-neutral-500">
-                              Gap between emails (min)
-                            </label>
-                            <input
-                              type="number"
-                              min={1}
-                              max={240}
-                              value={gapMinutes}
-                              onChange={(e) =>
-                                setGapMinutes(Number(e.target.value))
-                              }
-                              className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2.5 py-1.5 text-sm text-neutral-100 outline-none focus:border-sky-500"
-                            />
-                          </div>
-                          <div>
-                            <label className="mb-1 block text-xs text-neutral-500">
-                              Max per day
-                            </label>
-                            <input
-                              type="number"
-                              min={1}
-                              max={2000}
-                              value={dailyCap}
-                              onChange={(e) =>
-                                setDailyCap(Number(e.target.value))
-                              }
-                              className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2.5 py-1.5 text-sm text-neutral-100 outline-none focus:border-sky-500"
-                            />
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-2.5">
-                          <div>
-                            <label className="mb-1 block text-xs text-neutral-500">
-                              Window start
-                            </label>
-                            <input
-                              type="time"
-                              value={windowStart}
-                              onChange={(e) => setWindowStart(e.target.value)}
-                              className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2.5 py-1.5 text-sm text-neutral-100 outline-none focus:border-sky-500 [color-scheme:dark]"
-                            />
-                          </div>
-                          <div>
-                            <label className="mb-1 block text-xs text-neutral-500">
-                              Window end
-                            </label>
-                            <input
-                              type="time"
-                              value={windowEnd}
-                              onChange={(e) => setWindowEnd(e.target.value)}
-                              className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2.5 py-1.5 text-sm text-neutral-100 outline-none focus:border-sky-500 [color-scheme:dark]"
-                            />
-                          </div>
-                        </div>
-                        <label className="flex cursor-pointer items-center gap-2 text-xs text-neutral-400">
+                    <div className="space-y-2.5 rounded-xl border border-neutral-800 bg-neutral-950/50 p-3">
+                      <div className="grid grid-cols-2 gap-2.5">
+                        <div>
+                          <label className="mb-1 block text-xs text-neutral-500">
+                            Gap between emails (min)
+                          </label>
                           <input
-                            type="checkbox"
-                            checked={skipWeekends}
-                            onChange={(e) => setSkipWeekends(e.target.checked)}
-                            className="h-3.5 w-3.5 rounded accent-sky-500"
+                            type="number"
+                            min={1}
+                            max={240}
+                            value={gapMinutes}
+                            onChange={(e) =>
+                              setGapMinutes(Number(e.target.value))
+                            }
+                            className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2.5 py-1.5 text-sm text-neutral-100 outline-none focus:border-sky-500"
                           />
-                          Skip weekends
-                        </label>
-                        <p className="text-xs text-amber-400/80">
-                          Sends happen only inside the window. A start time
-                          outside it rolls to the next window opening.
-                        </p>
-                        <p className="text-xs text-neutral-500">
-                          {(() => {
-                            const remaining =
-                              campaign.total - campaign.sentCount > 0
-                                ? campaign.total - campaign.sentCount
-                                : campaign.total;
-                            const [sh, sm] = windowStart
-                              .split(":")
-                              .map(Number);
-                            const [eh, em] = windowEnd.split(":").map(Number);
-                            const windowMin = Math.max(
-                              eh * 60 + em - (sh * 60 + sm),
-                              1
-                            );
-                            const perDay = Math.max(
-                              Math.min(
-                                dailyCap,
-                                Math.floor(windowMin / Math.max(gapMinutes, 1))
-                              ),
-                              1
-                            );
-                            const days = Math.ceil(remaining / perDay);
-                            return `≈ ${Math.min(perDay, remaining)} emails/day, finishes in about ${days} day${days === 1 ? "" : "s"}`;
-                          })()}
-                        </p>
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs text-neutral-500">
+                            Max per day / sender
+                          </label>
+                          <input
+                            type="number"
+                            min={1}
+                            max={100}
+                            value={dailyCap}
+                            onChange={(e) =>
+                              setDailyCap(
+                                Math.min(100, Math.max(1, Number(e.target.value)))
+                              )
+                            }
+                            className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2.5 py-1.5 text-sm text-neutral-100 outline-none focus:border-sky-500"
+                          />
+                        </div>
                       </div>
-                    )}
-
-                    {!staggerEnabled && (
+                      <div className="grid grid-cols-2 gap-2.5">
+                        <div>
+                          <label className="mb-1 block text-xs text-neutral-500">
+                            Window start
+                          </label>
+                          <input
+                            type="time"
+                            value={windowStart}
+                            onChange={(e) => setWindowStart(e.target.value)}
+                            className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2.5 py-1.5 text-sm text-neutral-100 outline-none focus:border-sky-500 [color-scheme:dark]"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs text-neutral-500">
+                            Window end
+                          </label>
+                          <input
+                            type="time"
+                            value={windowEnd}
+                            onChange={(e) => setWindowEnd(e.target.value)}
+                            className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2.5 py-1.5 text-sm text-neutral-100 outline-none focus:border-sky-500 [color-scheme:dark]"
+                          />
+                        </div>
+                      </div>
+                      <label className="flex cursor-pointer items-center gap-2 text-xs text-neutral-400">
+                        <input
+                          type="checkbox"
+                          checked={skipWeekends}
+                          onChange={(e) => setSkipWeekends(e.target.checked)}
+                          className="h-3.5 w-3.5 rounded accent-sky-500"
+                        />
+                        Skip weekends
+                      </label>
                       <label
                         className="flex cursor-pointer items-center gap-2 text-xs text-neutral-400"
-                        title="Each recipient gets the email at this wall-clock time in their own timezone, read from a Timezone column in your sheet"
+                        title="New sender mailboxes ramp up gradually (10/day, +25% every 3 days) to the cap to protect reputation"
                       >
                         <input
                           type="checkbox"
-                          checked={localTimeMode}
-                          onChange={(e) => setLocalTimeMode(e.target.checked)}
+                          checked={warmup}
+                          onChange={(e) => setWarmup(e.target.checked)}
                           className="h-3.5 w-3.5 rounded accent-sky-500"
                         />
-                        Recipient local time
+                        Warm-up new senders (ramp up to the cap)
                       </label>
-                    )}
+                      <p className="text-xs text-amber-400/80">
+                        Sends happen only inside the window. A start time
+                        outside it rolls to the next window opening.
+                      </p>
+                      <p className="text-xs text-neutral-500">
+                        {(() => {
+                          const remaining =
+                            campaign.total - campaign.sentCount > 0
+                              ? campaign.total - campaign.sentCount
+                              : campaign.total;
+                          const [sh, sm] = windowStart.split(":").map(Number);
+                          const [eh, em] = windowEnd.split(":").map(Number);
+                          const windowMin = Math.max(
+                            eh * 60 + em - (sh * 60 + sm),
+                            1
+                          );
+                          const perDay = Math.max(
+                            Math.min(
+                              dailyCap,
+                              Math.floor(windowMin / Math.max(gapMinutes, 1))
+                            ),
+                            1
+                          );
+                          const days = Math.ceil(remaining / perDay);
+                          return `≈ ${Math.min(perDay, remaining)} emails/day, finishes in about ${days} day${days === 1 ? "" : "s"}${warmup ? " (longer while a new sender warms up)" : ""}`;
+                        })()}
+                      </p>
+                    </div>
 
                     <button
-                      onClick={() =>
-                        startSend({
-                          time: scheduleTime,
-                          localMode: localTimeMode,
-                          stagger: staggerEnabled,
-                        })
-                      }
-                      disabled={sending || (!staggerEnabled && !scheduleTime)}
+                      onClick={() => startSend()}
+                      disabled={sending}
                       className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-amber-400 disabled:opacity-40"
                     >
                       <CalendarClock size={14} />
-                      {sending
-                        ? "Scheduling..."
-                        : staggerEnabled
-                          ? "Start drip send"
-                          : "Schedule"}
+                      {sending ? "Scheduling..." : "Start drip send"}
                     </button>
                   </div>
                 </div>
               ) : (
-                <>
-                  <button
-                    onClick={() => startSend()}
-                    disabled={sending}
-                    className="inline-flex items-center gap-2 rounded-xl bg-linear-to-br from-emerald-500 to-teal-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 transition hover:brightness-110 disabled:opacity-40"
-                  >
-                    {sending ? (
-                      <Loader2 size={15} className="animate-spin" />
-                    ) : campaign.status === "failed" ? (
-                      <RefreshCw size={15} />
-                    ) : (
-                      <Send size={15} />
-                    )}
-                    {sending
-                      ? "Starting..."
-                      : campaign.status === "failed"
-                        ? "Retry failed sends"
-                        : `Send to ${campaign.total} recipients`}
-                  </button>
-                  <button
-                    onClick={() => setShowSchedule(true)}
-                    disabled={sending}
-                    className="inline-flex items-center gap-2 rounded-xl border border-neutral-800 px-4 py-2.5 text-sm text-neutral-300 transition hover:bg-neutral-900 disabled:opacity-40"
-                  >
-                    <CalendarClock size={15} />
-                    Schedule
-                  </button>
-                </>
+                <button
+                  onClick={() => setShowSchedule(true)}
+                  disabled={sending}
+                  className="inline-flex items-center gap-2 rounded-xl bg-linear-to-br from-emerald-500 to-teal-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 transition hover:brightness-110 disabled:opacity-40"
+                >
+                  {sending ? (
+                    <Loader2 size={15} className="animate-spin" />
+                  ) : campaign.status === "failed" ? (
+                    <RefreshCw size={15} />
+                  ) : (
+                    <Send size={15} />
+                  )}
+                  {campaign.status === "failed"
+                    ? "Retry failed sends"
+                    : `Send to ${campaign.total} recipients`}
+                </button>
               )}
             </>
           )}

@@ -6,7 +6,7 @@ import {
   Eye,
   FileSpreadsheet,
   Mail,
-  MousePointerClick,
+  MessageSquareReply,
   Plus,
 } from "lucide-react";
 import { auth } from "@/auth";
@@ -36,7 +36,7 @@ export default async function DashboardPage() {
   const statsByCampaign = new Map<string, Stats>();
   let totalSent = 0;
   let totalOpened = 0;
-  let totalClicked = 0;
+  let totalReplied = 0;
 
   if (list.length > 0) {
     const counts = await db
@@ -78,22 +78,23 @@ export default async function DashboardPage() {
         stats.opened += row.count;
         totalOpened += row.count;
       }
-      if (row.status === "clicked") {
-        stats.clicked += row.count;
-        totalClicked += row.count;
-      }
+      if (row.status === "replied") totalReplied += row.count;
+      if (row.status === "clicked") stats.clicked += row.count;
       if (row.status === "bounced") stats.bounced += row.count;
       statsByCampaign.set(row.campaignId, stats);
     }
   }
 
+  // Reply rate is the headline for cold outreach; open rate is directional only.
+  const replyRate =
+    totalSent > 0 ? `${Math.round((totalReplied / totalSent) * 100)}%` : "-";
   const openRate =
     totalSent > 0 ? `${Math.round((totalOpened / totalSent) * 100)}%` : "-";
 
   const overview = [
     { icon: Mail, label: "Emails sent", value: totalSent },
+    { icon: MessageSquareReply, label: "Reply rate", value: replyRate },
     { icon: Eye, label: "Open rate", value: openRate },
-    { icon: MousePointerClick, label: "Total clicks", value: totalClicked },
     { icon: FileSpreadsheet, label: "Campaigns", value: list.length },
   ];
 

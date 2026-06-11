@@ -8,6 +8,7 @@ import {
   unsubscribes,
   type RecipientStatus,
 } from "@/db/schema";
+import { cancelScheduledForEmail } from "@/lib/suppress";
 
 type ResendWebhookEvent = {
   type: string;
@@ -170,7 +171,8 @@ export async function POST(request: Request) {
     }
   }
 
-  // Hard bounces and complaints go straight onto the suppression list
+  // Hard bounces and complaints go straight onto the suppression list, and
+  // any follow-ups already queued to that address are cancelled.
   if (event.type === "email.bounced" || event.type === "email.complained") {
     await db
       .insert(unsubscribes)
@@ -179,6 +181,7 @@ export async function POST(request: Request) {
         source: event.type === "email.bounced" ? "bounce" : "complaint",
       })
       .onConflictDoNothing();
+    await cancelScheduledForEmail(recipient.email);
   }
 
   return Response.json({ received: true });

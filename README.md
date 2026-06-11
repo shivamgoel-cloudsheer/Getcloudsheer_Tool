@@ -4,9 +4,12 @@ Send personalized email campaigns straight from a Google Sheet, with per-recipie
 
 - Sign in with Google (the same grant gives read access to your Sheets)
 - Paste a sheet URL, preview the rows, compose with `{{Column}}` placeholders
-- Emails are sent through the Resend API in batches with rate limiting
-- Resend webhooks update each recipient: sent, delivered, opened, clicked, bounced
-- Automatic unsubscribe links, one-click unsubscribe headers, and a suppression list
+- Every campaign is **dripped**: emails go out one at a time with a jittered gap, only inside a business-hours window, capped per day **per sender** across all campaigns, weekends optional
+- New sender mailboxes **warm up** automatically (10/day, +25% every 3 days up to the cap)
+- Resend webhooks update each recipient: sent, delivered, opened, bounced; the dashboard headline is **reply rate**
+- **Plain-text sends, no `List-Unsubscribe` headers** - cold 1:1 mail is built to land in Primary, not Promotions. Opt-out is a plain footer link (still automated via the suppression list) plus the postal address for CAN-SPAM
+- A content linter flags spammy subjects/bodies before you send
+- Unsubscribes, bounces, complaints, and detected replies **cancel** any still-queued sends to that address
 
 ## Stack
 
@@ -44,7 +47,7 @@ Note: in Testing mode, Google expires refresh tokens after 7 days, so you must s
 ### 3. Resend (sending + tracking)
 
 1. At [resend.com](https://resend.com), add the domain **mail.cloudsheer.com** (a subdomain protects the reputation of your root domain) and add the DNS records it gives you.
-2. In the domain settings, enable **Open Tracking** and **Click Tracking**. Tracking is configured per domain, so this is required for opens and clicks to appear.
+2. In the domain settings, **leave Click Tracking off** for cold campaigns - rewritten links are a strong spam signal and the reply rate, not the click rate, is what matters here. Open Tracking is optional; enable it only if you want directional open numbers (Apple Mail and image blockers make it unreliable). Tracking is configured per domain.
 3. Create an API key and put it in `RESEND_API_KEY`.
 4. After your first deploy, add a webhook pointing to `https://YOUR-APP.vercel.app/api/webhooks/resend` and subscribe to all `email.*` events. Copy the signing secret (`whsec_...`) into `RESEND_WEBHOOK_SECRET`.
 
@@ -62,17 +65,27 @@ npm run dev        # http://localhost:3000
 
 ## How sending works
 
-1. Creating a campaign snapshots the sheet rows into the database (invalid emails are skipped).
-2. Pressing send filters out anyone on the suppression list, renders subject and body per recipient, and sends in batches of 100 through Resend's batch endpoint with idempotency keys and backoff on rate limits.
-3. Each email carries a `recipient_id` tag plus `List-Unsubscribe` headers, and the returned Resend email IDs are stored per recipient.
-4. The webhook handler verifies signatures (svix), logs every event, and moves each recipient forward through: sent, delivered, opened, clicked. Bounces and complaints are terminal and the address is added to the suppression list automatically.
-5. The campaign page polls every 5 seconds while you watch results come in.
+1. Creating a campaign snapshots the sheet rows into the database. Invalid emails are skipped, and duplicate emails are deduped (first row wins); the response reports both counts plus any content-linter warnings.
+2. Sending is **drip only** - there is no immediate-burst path. Each recipient is assigned a send time through Resend's `scheduled_at`: jittered gaps, clamped to a business-hours window, capped per day **per sender** (the cap spans every campaign that mailbox sends), weekends optional, and ramped while a new sender warms up. The cap ceiling is 100/day.
+3. Each email is **plain text** with its Reply-To set to its own From address, so replies land in that sender's mailbox. There are no `List-Unsubscribe` headers (the strongest "this is bulk" signal); the opt-out is a plain footer link to `/u/[token]` that still feeds the suppression list, alongside the sender's physical postal address. Each email carries a `recipient_id` tag, and returned Resend email IDs are stored per recipient.
+4. The webhook handler verifies signatures (svix), logs every event, and moves each recipient forward through: scheduled, sent, delivered, opened. Bounces and complaints are terminal: the address is suppressed and any still-queued sends to it are cancelled.
+5. Follow-up steps are scheduled by the background processor on the **same** drip rules and per-sender daily budget. A detected reply (or unsubscribe/bounce/complaint) cancels a recipient's queued follow-up.
+6. The campaign page polls every 5 seconds while you watch results come in.
+
+## Senders and addresses
+
+The three preset sending mailboxes, their reply-to behavior, CAN-SPAM postal addresses, and default signatures live in [`src/lib/senders.ts`](src/lib/senders.ts). **Fill in each `mailingAddress` with the real street address before sending** - the bracketed placeholders are intentionally obvious. The default `RESEND_FROM` sender falls back to the `MAILING_ADDRESS` env var.
+
+In the composer you can also pick **Custom address…** to send from any name/email (the domain must be verified in Resend, or delivery fails), and edit the **signature** that's appended to every email - initial and follow-ups - above the unsubscribe footer. The signature defaults to the selected sender's sign-off and is editable per campaign.
+
+Because Reply-To is now the sending address, reply detection (which polls the signed-in Google account's Gmail inbox) only sees replies that reach that inbox. Make sure each sender mailbox (shubham@/bharat@/tushar@) either **is** the polled account or **forwards** into it, or replies to the other senders won't be detected.
 
 ## Things to know
 
-- **Resend free tier**: 100 emails/day and 3,000/month. Larger campaigns need the Pro plan.
-- **Open rates are directional**: Apple Mail fires false opens, image-blocking clients fire none. Click data is reliable.
-- **Warm up the domain**: a fresh sending subdomain has no reputation. Start with small sends to people who know you.
+- **Resend free tier**: 100 emails/day and 3,000/month. Larger campaigns need the Pro plan. The per-sender daily cap (default 40, ceiling 100) keeps you inside this.
+- **Reply rate is the metric**: the dashboard headline is reply rate. Open rate is directional only (Apple Mail fires false opens, image blockers fire none) and click tracking is off by design.
+- **Warm up the domain and senders**: a fresh subdomain or mailbox has no reputation. Warm-up mode ramps a new sender from 10/day up to the cap automatically; keep it on for new addresses.
+- **Primary vs Promotions**: plain text, no list headers, a clean subject (the linter flags "free", ALL-CAPS, etc.), and low per-sender volume all push toward Primary. The deepest lever is *infrastructure*: sending through an ESP (Resend) on a `mail.` subdomain still looks like bulk to Gmail. Tools that reliably hit Primary send through the actual Google Workspace mailbox (SMTP/Gmail API). Moving to mailbox-based sending is the next step if Promotions placement persists after these changes. Also keep the From name consistent with the email's signature.
 - **Keep lists clean**: high bounce or complaint rates can get a Resend account suspended. The suppression list is enforced on every send.
 - Webhooks can't reach localhost. To test tracking locally, use a tunnel (for example `npx untun@latest tunnel http://localhost:3000`) or test on the deployed app.
 

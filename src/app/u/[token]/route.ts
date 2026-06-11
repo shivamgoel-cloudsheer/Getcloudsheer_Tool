@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { recipients, unsubscribes } from "@/db/schema";
+import { cancelScheduledForEmail } from "@/lib/suppress";
 
 function page(body: string): Response {
   return new Response(
@@ -75,6 +76,8 @@ export async function POST(
   }
 
   await suppress(recipient.email, "link");
+  // Pull back any follow-ups already queued to this address.
+  await cancelScheduledForEmail(recipient.email);
 
   return page(
     `<h1>You're unsubscribed</h1><p><strong>${recipient.email}</strong> won't receive any more emails from us.</p>`

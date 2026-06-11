@@ -13,6 +13,7 @@ import {
   Rocket,
 } from "lucide-react";
 import { renderTemplate } from "@/lib/template";
+import { lintContent } from "@/lib/linter";
 
 type Preview = {
   sheetId: string;
@@ -28,11 +29,30 @@ const STEPS = [
   { icon: Rocket, label: "Review" },
 ];
 
+const COMPANY = "CloudSheer Consulting";
+
 const SENDERS = [
-  { name: "Shubham", email: "shubham@cloudsheer.com" },
-  { name: "Bharat", email: "bharat@cloudsheer.com" },
-  { name: "Tushar", email: "tushar@cloudsheer.com" },
+  {
+    name: "Shubham",
+    email: "shubham@cloudsheer.com",
+    signature: `Regards,\nShubham\n${COMPANY}`,
+  },
+  {
+    name: "Bharat",
+    email: "bharat@cloudsheer.com",
+    signature: `Regards,\nBharat\n${COMPANY}`,
+  },
+  {
+    name: "Tushar",
+    email: "tushar@cloudsheer.com",
+    signature: `Regards,\nTushar\n${COMPANY}`,
+  },
 ];
+
+const defaultSignature = (name: string) =>
+  name ? `Regards,\n${name}\n${COMPANY}` : `Regards,\n${COMPANY}`;
+
+const isEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
 
 const inputClass =
   "w-full rounded-xl border border-neutral-800 bg-neutral-950/60 px-3.5 py-2.5 text-sm text-neutral-100 placeholder-neutral-600 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20";
@@ -51,6 +71,9 @@ export default function NewCampaignPage() {
   const [bodyB, setBodyB] = useState("");
   const [fromName, setFromName] = useState("Shubham");
   const [fromEmail, setFromEmail] = useState("shubham@cloudsheer.com");
+  const [customSender, setCustomSender] = useState(false);
+  const [signature, setSignature] = useState(SENDERS[0].signature);
+  const [sigTouched, setSigTouched] = useState(false);
   const [previewRowIndex, setPreviewRowIndex] = useState(0);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -64,6 +87,10 @@ export default function NewCampaignPage() {
   const renderedBody = useMemo(
     () => (previewRow ? renderTemplate(body, previewRow) : ""),
     [body, previewRow]
+  );
+  const lintWarnings = useMemo(
+    () => lintContent({ subject, body }).map((w) => w.message),
+    [subject, body]
   );
 
   async function loadSheet() {
@@ -119,6 +146,7 @@ export default function NewCampaignPage() {
           ...(fromEmail.trim()
             ? { fromEmail: fromEmail.trim(), fromName: fromName.trim() }
             : {}),
+          ...(signature.trim() ? { signature: signature.trim() } : {}),
         }),
       });
       const data = await res.json();
@@ -131,7 +159,12 @@ export default function NewCampaignPage() {
   }
 
   const canCompose = !!preview?.emailColumn;
-  const canReview = !!(name.trim() && subject.trim() && body.trim());
+  const canReview = !!(
+    name.trim() &&
+    subject.trim() &&
+    body.trim() &&
+    (!customSender || isEmail(fromEmail))
+  );
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -285,45 +318,93 @@ export default function NewCampaignPage() {
                 onChange={(e) => setName(e.target.value)}
               />
             </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-neutral-400">
-                  From name
-                </label>
-                <select
-                  className={inputClass}
-                  value={fromName}
-                  onChange={(e) => setFromName(e.target.value)}
-                >
-                  {SENDERS.map((s) => (
-                    <option key={s.name} value={s.name}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-neutral-400">
+                From
+              </label>
+              <select
+                className={inputClass}
+                value={customSender ? "custom" : fromEmail}
+                onChange={(e) => {
+                  if (e.target.value === "custom") {
+                    setCustomSender(true);
+                    if (!sigTouched) setSignature(defaultSignature(fromName));
+                    return;
+                  }
+                  setCustomSender(false);
+                  const match = SENDERS.find((s) => s.email === e.target.value);
+                  if (match) {
+                    setFromEmail(match.email);
+                    setFromName(match.name);
+                    if (!sigTouched) setSignature(match.signature);
+                  }
+                }}
+              >
+                {SENDERS.map((s) => (
+                  <option key={s.email} value={s.email}>
+                    {s.name} &lt;{s.email}&gt;
+                  </option>
+                ))}
+                <option value="custom">Custom address…</option>
+              </select>
+            </div>
+
+            {customSender && (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-neutral-400">
+                    From name
+                  </label>
+                  <input
+                    className={inputClass}
+                    placeholder="Alex Rivera"
+                    value={fromName}
+                    onChange={(e) => {
+                      setFromName(e.target.value);
+                      if (!sigTouched)
+                        setSignature(defaultSignature(e.target.value));
+                    }}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-neutral-400">
+                    From email
+                  </label>
+                  <input
+                    className={inputClass}
+                    placeholder="alex@yourdomain.com"
+                    value={fromEmail}
+                    onChange={(e) => setFromEmail(e.target.value)}
+                  />
+                  {fromEmail.trim() && !isEmail(fromEmail) && (
+                    <p className="mt-1 text-xs text-red-400">
+                      Enter a valid email address.
+                    </p>
+                  )}
+                  <p className="mt-1 text-xs text-neutral-600">
+                    The domain must be verified in Resend or delivery will fail.
+                  </p>
+                </div>
               </div>
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-neutral-400">
-                  From email
-                </label>
-                <select
-                  className={inputClass}
-                  value={fromEmail}
-                  onChange={(e) => {
-                    setFromEmail(e.target.value);
-                    const match = SENDERS.find(
-                      (s) => s.email === e.target.value
-                    );
-                    if (match) setFromName(match.name);
-                  }}
-                >
-                  {SENDERS.map((s) => (
-                    <option key={s.email} value={s.email}>
-                      {s.email}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            )}
+
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-neutral-400">
+                Signature
+              </label>
+              <textarea
+                className={`${inputClass} min-h-20 whitespace-pre-wrap`}
+                placeholder={"Regards,\nName\nCloudSheer Consulting"}
+                value={signature}
+                onChange={(e) => {
+                  setSignature(e.target.value);
+                  setSigTouched(true);
+                }}
+              />
+              <p className="mt-1 text-xs text-neutral-600">
+                Added automatically to every email (including follow-ups), above
+                the unsubscribe footer. Leave blank for no signature.
+              </p>
             </div>
             <div>
               <label className="mb-1.5 block text-xs font-medium text-neutral-400">
@@ -409,6 +490,22 @@ export default function NewCampaignPage() {
               )}
             </div>
           </div>
+          {lintWarnings.length > 0 && (
+            <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
+              <p className="text-xs font-semibold text-amber-300">
+                Deliverability check
+              </p>
+              <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-amber-200/90">
+                {lintWarnings.map((w, i) => (
+                  <li key={i}>{w}</li>
+                ))}
+              </ul>
+              <p className="mt-2 text-xs text-amber-300/70">
+                These are warnings, not blockers - you can still continue.
+              </p>
+            </div>
+          )}
+
           <div className="mt-6 flex items-center justify-between">
             <button
               onClick={() => setStep(0)}
@@ -465,6 +562,9 @@ export default function NewCampaignPage() {
               </div>
               <div className="whitespace-pre-wrap px-5 py-5 text-sm leading-relaxed">
                 {renderedBody || "(empty body)"}
+                {signature.trim() && (
+                  <div className="mt-4 text-neutral-700">{signature}</div>
+                )}
               </div>
               <div className="border-t border-neutral-100 px-5 py-3 text-xs text-neutral-400">
                 If you&apos;d prefer not to receive these emails, you can{" "}
