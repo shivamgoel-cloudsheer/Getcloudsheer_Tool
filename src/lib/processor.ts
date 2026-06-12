@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNotNull, isNull, lt, or } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNotNull, isNull, lt, or } from "drizzle-orm";
 import { db } from "@/db";
 import {
   campaigns,
@@ -9,10 +9,14 @@ import {
   type StoredStaggerConfig,
 } from "@/db/schema";
 import { findRepliesFrom } from "@/lib/gmail";
-import { getValidAccessToken } from "@/lib/google";
-import { getResend } from "@/lib/resend";
+import { findBouncedAddresses } from "@/lib/gmailBounce";
+import {
+  getAccessTokenForSender,
+  getSenderAccount,
+  getValidAccessToken,
+  hasSendScope,
+} from "@/lib/google";
 import { writeStatusColumn } from "@/lib/sheets";
-import { buildEmailBodies, renderTemplate } from "@/lib/template";
 import {
   computeStaggeredTimes,
   computeStaggeredTimesByZone,
@@ -22,11 +26,12 @@ import { getSenderCommitments } from "@/lib/senderBudget";
 import { capForDayFn, WARMUP_WINDOW_DAYS } from "@/lib/warmup";
 import { tzDateKey, tzOffsetMinutes } from "@/lib/timezone";
 import { resolveRecipientZone } from "@/lib/geo";
-import { replyToFor, signatureFor } from "@/lib/senders";
+import { DEFAULT_FROM_ADDRESS, emailFromAddress } from "@/lib/senders";
+import { cancelScheduledForEmail } from "@/lib/suppress";
 
+// "delivered"/"opened"/"clicked" are Resend-era statuses kept so historical
+// recipients still get follow-ups and reply detection.
 const ACTIVE_STATUSES = ["sent", "delivered", "opened", "clicked"] as const;
-const DELAY_BETWEEN_SENDS_MS = 600;
-const MAX_HORIZON_MS = 29 * 24 * 60 * 60 * 1000;
 
 // Follow-up drip defaults, used when a campaign has no stored stagger config.
 const DEFAULT_STAGGER: StaggerConfig = {
@@ -43,49 +48,57 @@ function staggerFrom(stored: StoredStaggerConfig | null): StaggerConfig {
   return stored ? { ...stored } : DEFAULT_STAGGER;
 }
 
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 type Recipient = typeof recipients.$inferSelect;
 type Campaign = typeof campaigns.$inferSelect;
 type SequenceStep = typeof sequenceSteps.$inferSelect;
 
 export type ProcessResult = {
   repliesFound: number;
+  bouncesFound: number;
   followUpsSent: number;
   sheetsSynced: number;
   errors: string[];
 };
 
+/** Effective sender mailbox for a campaign. */
+function senderOf(campaign: Campaign): string {
+  return emailFromAddress(campaign.fromAddress ?? DEFAULT_FROM_ADDRESS);
+}
+
 /**
  * One pass of background work for a user:
- * 1. Detect replies in Gmail; mark recipients replied and cancel any
- *    still-scheduled follow-up to them.
- * 2. Schedule any due follow-up steps through the same drip rules (window,
- *    gap, per-sender daily cap, weekends, warm-up).
- * 3. Sync recipient statuses back into each campaign's Google Sheet.
+ * 1. Detect replies in each SENDER's own Gmail inbox (not just the campaign
+ *    owner's); mark recipients replied and cancel queued follow-ups to them.
+ * 2. Detect bounces from mailer-daemon reports in each sender's inbox;
+ *    suppress the addresses.
+ * 3. Schedule any due follow-up steps through the same drip rules (window,
+ *    gap, per-sender daily cap, weekends, warm-up). Actual sending happens
+ *    in the dispatcher.
+ * 4. Sync recipient statuses back into each campaign's Google Sheet.
  */
 export async function processUser(userId: string): Promise<ProcessResult> {
   const result: ProcessResult = {
     repliesFound: 0,
+    bouncesFound: 0,
     followUpsSent: 0,
     sheetsSynced: 0,
     errors: [],
   };
 
-  let accessToken: string;
+  // Owner token: used for sheet write-back and as a degraded fallback for
+  // reply detection when a sender's own token is unavailable.
+  let ownerToken: string;
   try {
-    accessToken = await getValidAccessToken(userId);
+    ownerToken = await getValidAccessToken(userId);
   } catch (e) {
     result.errors.push(e instanceof Error ? e.message : "Google auth failed");
     return result;
   }
 
-  // Reconcile stuck sends: a "sending" campaign whose heartbeat has gone stale
-  // means its background job was killed mid-run (typically a function timeout
-  // on a large drip). Flip it to "failed" so the Retry button works again -
-  // per-recipient state is tracked, so retrying resumes safely.
+  // Reconcile stuck sends: a "sending" campaign whose heartbeat has gone
+  // stale means scheduling died mid-run. Flip it to "failed" so the Retry
+  // button works again - per-recipient state is tracked, so retrying resumes
+  // safely.
   const STALE_SENDING_MS = 10 * 60 * 1000;
   await db
     .update(campaigns)
@@ -108,7 +121,24 @@ export async function processUser(userId: string): Promise<ProcessResult> {
   const campaignIds = userCampaigns.map((c) => c.id);
   if (campaignIds.length === 0) return result;
 
-  // --- 1. Reply detection -------------------------------------------------
+  const campaignById = new Map(userCampaigns.map((c) => [c.id, c]));
+
+  // Cache of sender mailbox -> access token (or null when unavailable)
+  const senderTokens = new Map<string, string | null>();
+  async function tokenForSender(sender: string): Promise<string | null> {
+    if (senderTokens.has(sender)) return senderTokens.get(sender)!;
+    try {
+      const token = await getAccessTokenForSender(sender);
+      senderTokens.set(sender, token);
+      return token;
+    } catch (e) {
+      result.errors.push(e instanceof Error ? e.message : String(e));
+      senderTokens.set(sender, null);
+      return null;
+    }
+  }
+
+  // --- 1. Reply detection, per sender inbox -------------------------------
   try {
     // Includes "scheduled" recipients (a queued follow-up) so a reply can
     // cancel that follow-up before it goes out.
@@ -124,15 +154,33 @@ export async function processUser(userId: string): Promise<ProcessResult> {
         )
       );
 
-    const uniqueEmails = [...new Set(active.map((r) => r.email))];
-    if (uniqueEmails.length > 0) {
-      const replies = await findRepliesFrom(accessToken, uniqueEmails);
-      for (const r of active) {
+    // Replies land in the inbox of the mailbox the email was sent from, so
+    // group recipients by sender and check each sender's own inbox.
+    const bySender = new Map<string, Recipient[]>();
+    for (const r of active) {
+      const campaign = campaignById.get(r.campaignId);
+      if (!campaign) continue;
+      const sender = senderOf(campaign);
+      const list = bySender.get(sender);
+      if (list) list.push(r);
+      else bySender.set(sender, [r]);
+    }
+
+    for (const [sender, group] of bySender) {
+      // Degrade to the owner's inbox if the sender's token is unavailable -
+      // catches nothing for other mailboxes but is better than skipping.
+      const token = (await tokenForSender(sender)) ?? ownerToken;
+
+      const uniqueEmails = [...new Set(group.map((r) => r.email))];
+      if (uniqueEmails.length === 0) continue;
+      const replies = await findRepliesFrom(token, uniqueEmails);
+
+      for (const r of group) {
         const repliedAt = replies.get(r.email.toLowerCase());
         if (!repliedAt) continue;
         // A queued follow-up (scheduled with a prior step already sent): any
-        // reply seen now is new - earlier replies would have been caught while
-        // the recipient was still in a sent/delivered state - so cancel it.
+        // reply seen now is new - earlier replies would have been caught
+        // while the recipient was still in a sent state - so cancel it.
         const isQueuedFollowup = r.status === "scheduled" && r.sequenceStep > 0;
         // An initial scheduled send hasn't actually emailed them yet; don't
         // act on pre-existing inbox mail.
@@ -142,19 +190,14 @@ export async function processUser(userId: string): Promise<ProcessResult> {
         if (!isQueuedFollowup && !(r.lastEmailAt && repliedAt > r.lastEmailAt)) {
           continue;
         }
-        if (isQueuedFollowup && r.resendEmailId) {
-          try {
-            await getResend().emails.cancel(r.resendEmailId);
-          } catch (e) {
-            console.error("Failed to cancel follow-up on reply", e);
-          }
-        }
+        // Scheduling is DB-backed: clearing scheduledFor IS the cancellation.
         await db
           .update(recipients)
           .set({
             repliedAt,
             status: "replied",
-            ...(isQueuedFollowup ? { resendEmailId: null } : {}),
+            scheduledFor: null,
+            dispatchClaimedAt: null,
           })
           .where(eq(recipients.id, r.id));
         result.repliesFound++;
@@ -168,7 +211,60 @@ export async function processUser(userId: string): Promise<ProcessResult> {
     result.errors.push(e instanceof Error ? e.message : "Reply check failed");
   }
 
-  // --- 2. Due follow-ups, scheduled via the drip rules --------------------
+  // --- 2. Bounce detection from mailer-daemon reports ----------------------
+  try {
+    const recentCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const recentlySent = await db
+      .select()
+      .from(recipients)
+      .where(
+        and(
+          inArray(recipients.campaignId, campaignIds),
+          eq(recipients.status, "sent"),
+          gt(recipients.lastEmailAt, recentCutoff)
+        )
+      );
+
+    const bySender = new Map<string, Recipient[]>();
+    for (const r of recentlySent) {
+      const campaign = campaignById.get(r.campaignId);
+      if (!campaign) continue;
+      const sender = senderOf(campaign);
+      const list = bySender.get(sender);
+      if (list) list.push(r);
+      else bySender.set(sender, [r]);
+    }
+
+    for (const [sender, group] of bySender) {
+      const token = await tokenForSender(sender);
+      if (!token) continue; // bounce reports only exist in the sender's inbox
+
+      const bounces = await findBouncedAddresses(token);
+      if (bounces.size === 0) continue;
+
+      for (const r of group) {
+        if (!bounces.has(r.email.toLowerCase())) continue;
+        await db
+          .update(recipients)
+          .set({ status: "bounced" })
+          .where(and(eq(recipients.id, r.id), eq(recipients.status, "sent")));
+        await db
+          .insert(unsubscribes)
+          .values({
+            email: r.email.toLowerCase(),
+            userId,
+            source: "bounce",
+          })
+          .onConflictDoNothing();
+        await cancelScheduledForEmail(r.email);
+        result.bouncesFound++;
+      }
+    }
+  } catch (e) {
+    result.errors.push(e instanceof Error ? e.message : "Bounce check failed");
+  }
+
+  // --- 3. Due follow-ups, queued via the drip rules ------------------------
   try {
     const suppressedEmails = new Set(
       (await db.select({ email: unsubscribes.email }).from(unsubscribes)).map(
@@ -218,16 +314,25 @@ export async function processUser(userId: string): Promise<ProcessResult> {
 
     if (due.length > 0) {
       // Group by effective sender so the daily cap spans campaigns per mailbox.
-      const fallbackFrom = process.env.RESEND_FROM ?? "";
       const bySender = new Map<string, Due[]>();
       for (const d of due) {
-        const sender = d.campaign.fromAddress ?? fallbackFrom;
+        const sender = senderOf(d.campaign);
         const list = bySender.get(sender);
         if (list) list.push(d);
         else bySender.set(sender, [d]);
       }
 
       for (const [sender, items] of bySender) {
+        // The dispatcher will need this sender's token; surface the problem
+        // now instead of queueing follow-ups that can never send.
+        const acct = await getSenderAccount(sender);
+        if (!acct || !hasSendScope(acct.scope)) {
+          result.errors.push(
+            `Follow-ups for ${sender} paused — Google not connected with send access.`
+          );
+          continue;
+        }
+
         // Oldest-due first.
         items.sort(
           (a, b) =>
@@ -277,69 +382,32 @@ export async function processUser(userId: string): Promise<ProcessResult> {
             capForDay,
           });
         }
-        // Running tally so the per-sender cap is hard-enforced at send time.
+        // Running tally so the per-sender cap is hard-enforced at queue time.
         const committed = new Map(byDay);
 
         for (let i = 0; i < order.length; i++) {
-          const { campaign, step, recipient: r } = order[i];
+          const { step, recipient: r } = order[i];
           const at = times[i];
-          // Past Resend's 30-day window: leave it for a future run.
-          if (at.getTime() > now + MAX_HORIZON_MS) continue;
 
           // Cap guard: if this day is already full (e.g. a concurrent send
           // filled it), leave the follow-up for the next run.
           const dayKey = tzDateKey(at, cfg.timeZone);
           if ((committed.get(dayKey) ?? 0) >= capForDay(dayKey)) continue;
 
-          const subject = renderTemplate(step.subjectTemplate, r.rowData);
-          const body = renderTemplate(step.bodyTemplate, r.rowData);
-          // Plain-text, no footer (see send route): body + signature only.
-          const { text } = buildEmailBodies(
-            body,
-            campaign.signature ?? signatureFor(campaign.fromAddress)
-          );
-
-          const { data, error } = await getResend().emails.send(
-            {
-              from: campaign.fromAddress ?? process.env.RESEND_FROM!,
-              to: [r.email],
-              replyTo: replyToFor(campaign.fromAddress),
-              subject,
-              text,
-              scheduledAt: at.toISOString(),
-              tags: [
-                { name: "recipient_id", value: r.id },
-                { name: "campaign_id", value: campaign.id },
-                { name: "variant", value: r.variant },
-                { name: "step", value: String(step.stepNumber) },
-              ],
-            },
-            {
-              // Stable per (campaign, step, recipient): if the dashboard poll
-              // and the cron overlap, Resend collapses them into one send.
-              idempotencyKey: `followup-${campaign.id}-s${step.stepNumber}-r${r.id}`,
-            }
-          );
-
-          if (!error && data) {
-            committed.set(dayKey, (committed.get(dayKey) ?? 0) + 1);
-            await db
-              .update(recipients)
-              .set({
-                sequenceStep: step.stepNumber,
-                lastEmailAt: at,
-                status: "scheduled",
-                resendEmailId: data.id,
-              })
-              .where(eq(recipients.id, r.id));
-            result.followUpsSent++;
-          } else {
-            result.errors.push(
-              `Follow-up step ${step.stepNumber} failed for "${campaign.name}": ${error?.message ?? "unknown"}`
-            );
-          }
-
-          await sleep(DELAY_BETWEEN_SENDS_MS);
+          // Queue it; the dispatcher renders and sends when the time comes.
+          // Once status is "scheduled" the row no longer matches the
+          // candidate query, so overlapping processor runs can't double-queue.
+          committed.set(dayKey, (committed.get(dayKey) ?? 0) + 1);
+          await db
+            .update(recipients)
+            .set({
+              sequenceStep: step.stepNumber,
+              lastEmailAt: at,
+              scheduledFor: at,
+              status: "scheduled",
+            })
+            .where(eq(recipients.id, r.id));
+          result.followUpsSent++;
         }
       }
     }
@@ -347,7 +415,7 @@ export async function processUser(userId: string): Promise<ProcessResult> {
     result.errors.push(e instanceof Error ? e.message : "Follow-ups failed");
   }
 
-  // --- 3. Sheet write-back ------------------------------------------------
+  // --- 4. Sheet write-back ------------------------------------------------
   try {
     for (const campaign of userCampaigns) {
       if (campaign.status === "draft") continue;
@@ -368,7 +436,7 @@ export async function processUser(userId: string): Promise<ProcessResult> {
       if (rows.length === 0) continue;
 
       await writeStatusColumn(
-        accessToken,
+        ownerToken,
         campaign.sheetId,
         rows.map((r) => ({
           row: r.sheetRow!,

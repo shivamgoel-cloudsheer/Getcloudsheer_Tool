@@ -34,6 +34,28 @@ export function findUnknownPlaceholders(
   );
 }
 
+/**
+ * Picks the subject/body templates for a recipient's A/B variant. Structural
+ * types keep this lib decoupled from the DB schema.
+ */
+export function templatesFor(
+  campaign: {
+    subjectTemplate: string;
+    bodyTemplate: string;
+    subjectTemplateB: string | null;
+    bodyTemplateB: string | null;
+  },
+  r: { variant: string }
+): { subject: string; body: string } {
+  if (r.variant === "B") {
+    return {
+      subject: campaign.subjectTemplateB || campaign.subjectTemplate,
+      body: campaign.bodyTemplateB || campaign.bodyTemplate,
+    };
+  }
+  return { subject: campaign.subjectTemplate, body: campaign.bodyTemplate };
+}
+
 export function escapeHtml(text: string): string {
   return text
     .replace(/&/g, "&amp;")

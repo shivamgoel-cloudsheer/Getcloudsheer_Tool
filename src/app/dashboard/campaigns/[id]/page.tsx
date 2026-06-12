@@ -178,7 +178,8 @@ export default function CampaignPage({
       if (!res.ok) throw new Error(json.error ?? "Processing failed");
       const parts = [
         `${json.repliesFound} new repl${json.repliesFound === 1 ? "y" : "ies"}`,
-        `${json.followUpsSent} follow-up${json.followUpsSent === 1 ? "" : "s"} sent`,
+        `${json.bouncesFound ?? 0} bounce${json.bouncesFound === 1 ? "" : "s"}`,
+        `${json.followUpsSent} follow-up${json.followUpsSent === 1 ? "" : "s"} queued`,
         `${json.sheetsSynced} sheet${json.sheetsSynced === 1 ? "" : "s"} synced`,
       ];
       setNotice(parts.join(" · "));
@@ -265,9 +266,8 @@ export default function CampaignPage({
       const reached = group.filter((r) =>
         ["sent", ...ENGAGED, "bounced", "complained"].includes(r.status)
       ).length;
-      const delivered = group.filter((r) => ENGAGED.includes(r.status)).length;
       const replied = group.filter((r) => r.repliedAt).length;
-      return { total: group.length, reached, delivered, replied };
+      return { total: group.length, reached, replied };
     };
     return { A: compute("A"), B: compute("B") };
   }, [data]);
@@ -288,19 +288,19 @@ export default function CampaignPage({
   const { campaign, steps, counts, recipients } = data;
 
   const replied = counts.replied ?? 0;
-  const delivered =
-    (counts.delivered ?? 0) +
-    (counts.opened ?? 0) +
-    (counts.clicked ?? 0) +
-    replied;
+  // Resend-era statuses still count as reached for historical campaigns
+  const legacyEngaged =
+    (counts.delivered ?? 0) + (counts.opened ?? 0) + (counts.clicked ?? 0);
   const bounced = (counts.bounced ?? 0) + (counts.complained ?? 0);
-  const reached = delivered + bounced + (counts.sent ?? 0);
+  const queued = counts.scheduled ?? 0;
+  const reached = (counts.sent ?? 0) + legacyEngaged + replied + bounced;
 
   const pct = (n: number) =>
     reached > 0 ? Math.round((n / reached) * 100) : 0;
 
-  // Reply-centric: opens/clicks are omitted (text-only cold email has no
-  // tracking pixel or rewritten links, so they'd always read ~0).
+  // Reply-centric: Gmail sending has no delivery/open/click events, and
+  // text-only cold email has no tracking pixel anyway. Replies and bounces
+  // are detected from each sender's own inbox.
   const stats = [
     {
       icon: Mail,
@@ -312,10 +312,10 @@ export default function CampaignPage({
     },
     {
       icon: CheckCheck,
-      label: "Delivered",
-      value: delivered,
-      sub: `${pct(delivered)}%`,
-      bar: pct(delivered),
+      label: "Queued",
+      value: queued,
+      sub: campaign.total > 0 ? `of ${campaign.total}` : "",
+      bar: campaign.total > 0 ? (queued / campaign.total) * 100 : 0,
       barClass: "bg-emerald-500",
     },
     {
@@ -693,10 +693,8 @@ export default function CampaignPage({
                   </p>
                   <div className="mt-3 grid grid-cols-2 gap-2 text-center">
                     <div>
-                      <p className="text-lg font-semibold">
-                        {rate(s.delivered)}
-                      </p>
-                      <p className="text-xs text-neutral-500">delivered</p>
+                      <p className="text-lg font-semibold">{s.reached}</p>
+                      <p className="text-xs text-neutral-500">reached</p>
                     </div>
                     <div>
                       <p className="text-lg font-semibold">{rate(s.replied)}</p>
@@ -728,8 +726,8 @@ export default function CampaignPage({
         </div>
         <p className="mt-1 text-xs text-neutral-500">
           Follow-ups go to recipients who haven&apos;t replied, bounced, or
-          unsubscribed. They&apos;re sent by the daily background check or when
-          you press &quot;Check replies + sync&quot;.
+          unsubscribed, threaded under the original email. Start the subject
+          with &quot;Re:&quot; so they thread on the recipient&apos;s side too.
         </p>
 
         {steps.length === 0 && !showAddStep && (

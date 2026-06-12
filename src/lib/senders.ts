@@ -37,6 +37,9 @@ export const SENDERS: Sender[] = [
   },
 ];
 
+/** Default sender when a campaign has no fromAddress (replaces RESEND_FROM). */
+export const DEFAULT_FROM_ADDRESS = `${SENDERS[0].name} <${SENDERS[0].email}>`;
+
 /** Display name out of a "Name <email>" or plain address (empty if none). */
 export function nameFromAddress(fromAddress: string | null | undefined): string {
   if (!fromAddress) return "";
@@ -49,11 +52,6 @@ export function defaultSignatureFor(name: string): string {
   return name ? `Regards,\n${name}\n${COMPANY}` : `Regards,\n${COMPANY}`;
 }
 
-/** Fallback address for the default RESEND_FROM sender (set MAILING_ADDRESS to override). */
-const DEFAULT_MAILING_ADDRESS =
-  process.env.MAILING_ADDRESS ??
-  "CloudSheer Consulting, 6614 Avenue U, #1019, Brooklyn, New York 11234, USA";
-
 /** Pulls the bare email out of a "Name <email@domain>" or plain address. */
 export function emailFromAddress(fromAddress: string): string {
   const match = fromAddress.match(/<([^>]+)>/);
@@ -64,27 +62,6 @@ export function getSender(fromAddress: string | null | undefined): Sender | null
   if (!fromAddress) return null;
   const email = emailFromAddress(fromAddress);
   return SENDERS.find((s) => s.email.toLowerCase() === email) ?? null;
-}
-
-/** Postal address to print in the footer for a given From address. */
-export function mailingAddressFor(fromAddress: string | null | undefined): string {
-  return getSender(fromAddress)?.mailingAddress ?? DEFAULT_MAILING_ADDRESS;
-}
-
-/**
- * Reply-To for a send: the address the email was sent from, so replies land
- * in that sender's own mailbox. Falls back to the global From when unknown.
- */
-export function replyToFor(fromAddress: string | null | undefined): string {
-  return fromAddress?.trim() || process.env.RESEND_FROM!;
-}
-
-/** mailto: target for the List-Unsubscribe header, pointed at the sender. */
-export function unsubscribeMailtoFor(fromAddress: string | null | undefined): string {
-  const email = fromAddress
-    ? emailFromAddress(fromAddress)
-    : emailFromAddress(process.env.RESEND_FROM ?? "unsubscribe@cloudsheer.com");
-  return `mailto:${email}?subject=unsubscribe`;
 }
 
 /**

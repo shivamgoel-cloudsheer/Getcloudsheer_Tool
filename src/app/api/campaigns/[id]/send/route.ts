@@ -1,5 +1,5 @@
 import { after } from "next/server";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { auth } from "@/auth";
 import { db } from "@/db";
@@ -9,8 +9,6 @@ import {
   unsubscribes,
   type StoredStaggerConfig,
 } from "@/db/schema";
-import { getResend } from "@/lib/resend";
-import { buildEmailBodies, renderTemplate } from "@/lib/template";
 import { isValidTimeZone, tzDateKey, tzOffsetMinutes } from "@/lib/timezone";
 import {
   computeStaggeredTimes,
@@ -20,7 +18,12 @@ import {
 import { resolveRecipientZone } from "@/lib/geo";
 import { getSenderCommitments } from "@/lib/senderBudget";
 import { capForDayFn, WARMUP_WINDOW_DAYS } from "@/lib/warmup";
-import { replyToFor, signatureFor } from "@/lib/senders";
+import { DEFAULT_FROM_ADDRESS, emailFromAddress } from "@/lib/senders";
+import {
+  getSenderAccount,
+  hasSendScope,
+} from "@/lib/google";
+import { dispatchDue } from "@/lib/dispatch";
 
 export const maxDuration = 300;
 
@@ -28,11 +31,7 @@ export const maxDuration = 300;
 // campaign goes out spread over time within this limit.
 export const MAX_DAILY_CAP = 100;
 
-const DELAY_BETWEEN_SINGLE_SENDS_MS = 600;
-const MAX_RETRIES = 3;
-
 const MIN_SCHEDULE_AHEAD_MS = 2 * 60 * 1000;
-const MAX_SCHEDULE_AHEAD_MS = 30 * 24 * 60 * 60 * 1000;
 
 // Applied when a send request arrives without explicit drip settings, so
 // nothing ever goes out as an immediate burst.
@@ -78,13 +77,6 @@ function toStored(cfg: StaggerConfig): StoredStaggerConfig {
   };
 }
 
-// Every send is a drip. The only choice is when it starts and on what terms.
-type ScheduleConfig = { base: Date; cfg: StaggerConfig };
-
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -121,25 +113,45 @@ export async function POST(
   } else if (parsed.data.scheduledAt) {
     // A bare scheduledAt is the drip's start time, not everyone's send time.
     const at = new Date(parsed.data.scheduledAt);
-    const ahead = at.getTime() - Date.now();
-    if (ahead < MIN_SCHEDULE_AHEAD_MS) {
+    if (at.getTime() - Date.now() < MIN_SCHEDULE_AHEAD_MS) {
       return Response.json(
         { error: "Schedule at least 2 minutes in the future" },
-        { status: 400 }
-      );
-    }
-    if (ahead > MAX_SCHEDULE_AHEAD_MS) {
-      return Response.json(
-        { error: "Resend supports scheduling at most 30 days ahead" },
         { status: 400 }
       );
     }
     base = at;
   }
 
-  const schedule: ScheduleConfig = { base, cfg };
-  const displayTime = base;
-  // Persisted so background follow-ups drip on the same terms as the send.
+  // Sends go out through the sender's own Gmail, so the sender mailbox must
+  // be linked with send permission before anything is scheduled.
+  const [precheck] = await db
+    .select({ fromAddress: campaigns.fromAddress })
+    .from(campaigns)
+    .where(and(eq(campaigns.id, id), eq(campaigns.userId, session.user.id)));
+  if (!precheck) {
+    return Response.json({ error: "Campaign not found" }, { status: 404 });
+  }
+  const senderEmail = emailFromAddress(
+    precheck.fromAddress ?? DEFAULT_FROM_ADDRESS
+  );
+  const senderAccount = await getSenderAccount(senderEmail);
+  if (!senderAccount) {
+    return Response.json(
+      {
+        error: `${senderEmail} hasn't connected Google yet — have them sign in to the dashboard once.`,
+      },
+      { status: 400 }
+    );
+  }
+  if (!hasSendScope(senderAccount.scope)) {
+    return Response.json(
+      {
+        error: `${senderEmail} needs to re-connect Google to grant send permission (sign out and sign in again).`,
+      },
+      { status: 400 }
+    );
+  }
+
   const storedConfig: StoredStaggerConfig = toStored(cfg);
 
   // Atomic guard: only a draft or previously failed campaign can start.
@@ -147,7 +159,7 @@ export async function POST(
     .update(campaigns)
     .set({
       status: "sending",
-      scheduledAt: displayTime,
+      scheduledAt: base,
       staggerConfig: storedConfig,
       lastProgressAt: new Date(),
     })
@@ -167,155 +179,101 @@ export async function POST(
     );
   }
 
-  // Respond immediately; the drip scheduling continues after the response.
-  after(() => runSend(campaign.id, schedule));
-
-  return Response.json({ status: "scheduling" }, { status: 202 });
-}
-
-type Recipient = typeof recipients.$inferSelect;
-type Campaign = typeof campaigns.$inferSelect;
-
-function templatesFor(campaign: Campaign, r: Recipient) {
-  if (r.variant === "B") {
-    return {
-      subject: campaign.subjectTemplateB || campaign.subjectTemplate,
-      body: campaign.bodyTemplateB || campaign.bodyTemplate,
-    };
-  }
-  return { subject: campaign.subjectTemplate, body: campaign.bodyTemplate };
-}
-
-function buildPayload(
-  campaign: Campaign,
-  r: Recipient,
-  scheduledAt: Date | null
-) {
-  const from = campaign.fromAddress ?? process.env.RESEND_FROM!;
-  // Replies go back to the address the email was sent from.
-  const replyTo = replyToFor(campaign.fromAddress);
-  const templates = templatesFor(campaign, r);
-  const subject = renderTemplate(templates.subject, r.rowData);
-  const renderedBody = renderTemplate(templates.body, r.rowData);
-  // Plain-text, no footer of any kind (no unsubscribe link/header, no postal
-  // address) for a fully 1:1 look. Just body + signature.
-  const { text } = buildEmailBodies(
-    renderedBody,
-    campaign.signature ?? signatureFor(campaign.fromAddress)
-  );
-
-  return {
-    from,
-    to: [r.email],
-    replyTo,
-    subject,
-    text,
-    ...(scheduledAt ? { scheduledAt: scheduledAt.toISOString() } : {}),
-    tags: [
-      { name: "recipient_id", value: r.id },
-      { name: "campaign_id", value: campaign.id },
-      { name: "variant", value: r.variant },
-      { name: "step", value: "0" },
-    ],
-  };
-}
-
-async function runSend(campaignId: string, schedule: ScheduleConfig) {
+  // Scheduling is now a pure DB write (no per-email API calls), so it runs
+  // inline and the response reports the real outcome.
   try {
-    const [campaign] = await db
-      .select()
-      .from(campaigns)
-      .where(eq(campaigns.id, campaignId));
-    if (!campaign) return;
+    const outcome = await scheduleSend(campaign.id, { base, cfg });
 
-    // A retry should re-attempt previously failed recipients
-    await db
-      .update(recipients)
-      .set({ status: "pending", error: null })
-      .where(
-        and(
-          eq(recipients.campaignId, campaignId),
-          eq(recipients.status, "failed")
-        )
-      );
-
-    const pending = await db
-      .select()
-      .from(recipients)
-      .where(
-        and(
-          eq(recipients.campaignId, campaignId),
-          eq(recipients.status, "pending")
-        )
-      );
-
-    // Suppression list: anyone who unsubscribed, bounced, or complained before
-    const suppressedEmails = new Set(
-      (await db.select({ email: unsubscribes.email }).from(unsubscribes)).map(
-        (u) => u.email
-      )
-    );
-
-    const toSuppress = pending.filter((r) =>
-      suppressedEmails.has(r.email.toLowerCase())
-    );
-    if (toSuppress.length > 0) {
-      await db
-        .update(recipients)
-        .set({ status: "suppressed" })
-        .where(
-          inArray(
-            recipients.id,
-            toSuppress.map((r) => r.id)
-          )
-        );
-    }
-
-    const toSend = pending.filter(
-      (r) => !suppressedEmails.has(r.email.toLowerCase())
-    );
-
-    // Distinguishes deliberate re-runs (retry button) from crash-retries of
-    // the same run, so Resend's idempotency cache doesn't replay old results
-    const runId = Date.now().toString(36);
-
-    const outcome = await sendIndividually(campaign, toSend, schedule, runId);
-
-    const finalStatus = outcome.anyFailed && !outcome.anySucceeded
-      ? "failed"
-      : "scheduled";
-
+    const finalStatus =
+      outcome.scheduled === 0 && outcome.failed > 0 ? "failed" : "scheduled";
     await db
       .update(campaigns)
       .set({ status: finalStatus })
       .where(eq(campaigns.id, campaign.id));
+
+    // Pick up any immediately-due rows without waiting for the next cron ping
+    if (outcome.scheduled > 0) {
+      after(() => dispatchDue());
+    }
+
+    return Response.json(
+      { status: finalStatus, ...outcome },
+      { status: finalStatus === "failed" ? 422 : 200 }
+    );
   } catch (error) {
-    console.error("Campaign send failed", error);
+    console.error("Campaign scheduling failed", error);
     await db
       .update(campaigns)
       .set({ status: "failed" })
-      .where(eq(campaigns.id, campaignId));
+      .where(eq(campaigns.id, campaign.id));
+    return Response.json({ error: "Scheduling failed" }, { status: 500 });
   }
 }
 
-// Every send is staggered and goes through Resend's scheduled_at one email at
-// a time (the batch endpoint does not support scheduled_at). Rate-limited to
-// stay under 2 requests/second.
-async function sendIndividually(
-  campaign: Campaign,
-  toSend: Recipient[],
-  schedule: ScheduleConfig,
-  runId: string
-) {
-  let scheduledCount = 0;
-  let anyFailed = false;
+type ScheduleConfig = { base: Date; cfg: StaggerConfig };
 
-  const MAX_HORIZON_MS = 29 * 24 * 60 * 60 * 1000;
+async function scheduleSend(campaignId: string, schedule: ScheduleConfig) {
+  const [campaign] = await db
+    .select()
+    .from(campaigns)
+    .where(eq(campaigns.id, campaignId));
+  if (!campaign) return { scheduled: 0, suppressed: 0, failed: 0 };
+
+  // A retry should re-attempt previously failed recipients
+  await db
+    .update(recipients)
+    .set({ status: "pending", error: null })
+    .where(
+      and(
+        eq(recipients.campaignId, campaignId),
+        eq(recipients.status, "failed")
+      )
+    );
+
+  const pending = await db
+    .select()
+    .from(recipients)
+    .where(
+      and(
+        eq(recipients.campaignId, campaignId),
+        eq(recipients.status, "pending")
+      )
+    );
+
+  // Suppression list: anyone who unsubscribed, bounced, or complained before
+  const suppressedEmails = new Set(
+    (await db.select({ email: unsubscribes.email }).from(unsubscribes)).map(
+      (u) => u.email
+    )
+  );
+
+  const toSuppress = pending.filter((r) =>
+    suppressedEmails.has(r.email.toLowerCase())
+  );
+  if (toSuppress.length > 0) {
+    await db
+      .update(recipients)
+      .set({ status: "suppressed" })
+      .where(
+        inArray(
+          recipients.id,
+          toSuppress.map((r) => r.id)
+        )
+      );
+  }
+
+  const toSend = pending.filter(
+    (r) => !suppressedEmails.has(r.email.toLowerCase())
+  );
+  if (toSend.length === 0) {
+    return { scheduled: 0, suppressed: toSuppress.length, failed: 0 };
+  }
+
   const cfg = schedule.cfg;
 
   // Per-sender daily budget: count what this mailbox has already committed
   // across all campaigns so two campaigns can't double its daily volume.
-  const sender = campaign.fromAddress ?? process.env.RESEND_FROM ?? "";
+  const sender = campaign.fromAddress ?? DEFAULT_FROM_ADDRESS;
   const { byDay, firstSendAt } = await getSenderCommitments(
     campaign.userId,
     sender,
@@ -332,6 +290,7 @@ async function sendIndividually(
     startDayKey,
     warm
   );
+
   // Send order + per-recipient times. With per-recipient timezones we sort
   // east-to-west so each lands in their local morning and the clock advances
   // monotonically; otherwise keep the original order.
@@ -357,100 +316,62 @@ async function sendIndividually(
     });
   }
 
-  // Running per-day tally (seeded from existing commitments) so the cap is
-  // hard-enforced right before each send, not only inside the allocator.
+  // Hard cap guard: re-tally per day (seeded from existing commitments) so a
+  // concurrent campaign can't overfill a day after times were computed.
   const committed = new Map(byDay);
+  const okIds: string[] = [];
+  const okTimes: string[] = [];
+  const cappedIds: string[] = [];
 
-  // Show the real first send time, not the requested base time - the
-  // send window may have rolled it forward
-  if (staggerTimes.length > 0) {
+  for (let i = 0; i < order.length; i++) {
+    const at = staggerTimes[i];
+    const dayKey = tzDateKey(at, cfg.timeZone);
+    if ((committed.get(dayKey) ?? 0) >= capForDay(dayKey)) {
+      cappedIds.push(order[i].id);
+      continue;
+    }
+    committed.set(dayKey, (committed.get(dayKey) ?? 0) + 1);
+    okIds.push(order[i].id);
+    okTimes.push(at.toISOString());
+  }
+
+  if (cappedIds.length > 0) {
+    await db
+      .update(recipients)
+      .set({
+        status: "failed",
+        error:
+          "Daily cap for this sender reached. Lower volume, widen the window, or split senders.",
+      })
+      .where(inArray(recipients.id, cappedIds));
+  }
+
+  if (okIds.length > 0) {
+    // lastEmailAt = scheduled time mirrors the previous behavior so the
+    // senderBudget day-bucketing keeps working; the dispatcher overwrites it
+    // with the actual send time.
+    await db.execute(sql`
+      UPDATE recipient AS r
+      SET status = 'scheduled',
+          scheduled_for = v.at,
+          last_email_at = v.at
+      FROM (
+        SELECT unnest(${okIds}::uuid[]) AS id,
+               unnest(${okTimes}::timestamptz[]) AS at
+      ) v
+      WHERE r.id = v.id
+    `);
+
+    // Show the real first send time - the window may have rolled it forward
     await db
       .update(campaigns)
-      .set({ scheduledAt: staggerTimes[0] })
+      .set({ scheduledAt: new Date(okTimes[0]) })
       .where(eq(campaigns.id, campaign.id));
   }
 
-  for (let i = 0; i < order.length; i++) {
-    const r = order[i];
-    // Heartbeat so the cron reconciler can tell a live run from a dead one.
-    if (i % 15 === 0) {
-      await db
-        .update(campaigns)
-        .set({ lastProgressAt: new Date() })
-        .where(eq(campaigns.id, campaign.id));
-    }
-    const at = staggerTimes[i];
-
-    if (at.getTime() > Date.now() + MAX_HORIZON_MS) {
-      anyFailed = true;
-      await db
-        .update(recipients)
-        .set({
-          status: "failed",
-          error:
-            "Beyond Resend's 30-day scheduling window. Raise the daily cap or shorten the gap.",
-        })
-        .where(eq(recipients.id, r.id));
-      continue;
-    }
-
-    // Hard cap guard: never exceed the sender's daily budget for this day,
-    // even if a concurrent campaign filled it after times were computed.
-    const dayKey = tzDateKey(at, cfg.timeZone);
-    if ((committed.get(dayKey) ?? 0) >= capForDay(dayKey)) {
-      anyFailed = true;
-      await db
-        .update(recipients)
-        .set({
-          status: "failed",
-          error: `Daily cap for this sender reached on ${dayKey}. Lower volume, widen the window, or split senders.`,
-        })
-        .where(eq(recipients.id, r.id));
-      continue;
-    }
-
-    const payload = buildPayload(campaign, r, at);
-
-    let lastError: string | null = null;
-    let emailId: string | null = null;
-
-    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-      const { data, error } = await getResend().emails.send(payload, {
-        idempotencyKey: `campaign-${campaign.id}-${runId}-r-${r.id}`,
-      });
-
-      if (!error && data) {
-        emailId = data.id;
-        break;
-      }
-
-      lastError = error?.message ?? "Unknown Resend error";
-      await sleep(1000 * 2 ** attempt);
-    }
-
-    if (emailId) {
-      scheduledCount++;
-      committed.set(dayKey, (committed.get(dayKey) ?? 0) + 1);
-      await db
-        .update(recipients)
-        .set({ status: "scheduled", resendEmailId: emailId, lastEmailAt: at })
-        .where(eq(recipients.id, r.id));
-      await db
-        .update(campaigns)
-        .set({ sentCount: campaign.sentCount + scheduledCount })
-        .where(eq(campaigns.id, campaign.id));
-    } else {
-      anyFailed = true;
-      await db
-        .update(recipients)
-        .set({ status: "failed", error: lastError })
-        .where(eq(recipients.id, r.id));
-    }
-
-    if (i < order.length - 1) {
-      await sleep(DELAY_BETWEEN_SINGLE_SENDS_MS);
-    }
-  }
-
-  return { anySucceeded: scheduledCount > 0, anyFailed };
+  return {
+    scheduled: okIds.length,
+    suppressed: toSuppress.length,
+    failed: cappedIds.length,
+  };
 }

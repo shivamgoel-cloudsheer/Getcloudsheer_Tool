@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -78,6 +78,29 @@ export default function NewCampaignPage() {
   const [customSender, setCustomSender] = useState(false);
   const [signature, setSignature] = useState(SENDERS[0].signature);
   const [sigTouched, setSigTouched] = useState(false);
+  // email -> can this mailbox send via Gmail right now?
+  const [senderStatus, setSenderStatus] = useState<Map<
+    string,
+    { linked: boolean; sendReady: boolean }
+  > | null>(null);
+
+  useEffect(() => {
+    fetch("/api/senders/status", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
+        if (!json?.senders) return;
+        setSenderStatus(
+          new Map(
+            (json.senders as {
+              email: string;
+              linked: boolean;
+              sendReady: boolean;
+            }[]).map((s) => [s.email, s])
+          )
+        );
+      })
+      .catch(() => {});
+  }, []);
   const [previewRowIndex, setPreviewRowIndex] = useState(0);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -429,13 +452,33 @@ export default function NewCampaignPage() {
                   }
                 }}
               >
-                {SENDERS.map((s) => (
-                  <option key={s.email} value={s.email}>
-                    {s.name} &lt;{s.email}&gt;
-                  </option>
-                ))}
+                {SENDERS.map((s) => {
+                  const st = senderStatus?.get(s.email);
+                  const blocked = st ? !st.sendReady : false;
+                  return (
+                    <option key={s.email} value={s.email} disabled={blocked}>
+                      {s.name} &lt;{s.email}&gt;
+                      {st && !st.linked
+                        ? " — not connected"
+                        : st && !st.sendReady
+                          ? " — needs Google re-connect"
+                          : ""}
+                    </option>
+                  );
+                })}
                 <option value="custom">Custom address…</option>
               </select>
+              {(() => {
+                const st = senderStatus?.get(fromEmail);
+                if (customSender || !st || st.sendReady) return null;
+                return (
+                  <p className="mt-1.5 text-xs text-amber-400/90">
+                    {st.linked
+                      ? `${fromEmail} needs to re-connect Google to grant send permission (sign out and back in once).`
+                      : `${fromEmail} hasn't signed in to the dashboard yet — emails send through each person's own Gmail.`}
+                  </p>
+                );
+              })()}
             </div>
 
             {customSender && (
@@ -471,7 +514,9 @@ export default function NewCampaignPage() {
                     </p>
                   )}
                   <p className="mt-1 text-xs text-neutral-600">
-                    The domain must be verified in Resend or delivery will fail.
+                    Emails send through this mailbox&apos;s own Gmail, so its
+                    owner must have signed in to the dashboard with Google
+                    once.
                   </p>
                 </div>
               </div>

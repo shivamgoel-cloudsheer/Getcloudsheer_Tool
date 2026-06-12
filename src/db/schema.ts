@@ -124,7 +124,8 @@ export const campaigns = pgTable(
     // Optional A/B variant; when set, recipients are split 50/50
     subjectTemplateB: text("subject_template_b"),
     bodyTemplateB: text("body_template_b"),
-    // Per-campaign sender ("Name <email@domain>"); falls back to RESEND_FROM
+    // Per-campaign sender ("Name <email@domain>"); falls back to
+    // DEFAULT_FROM_ADDRESS. Sends go out via this mailbox's own Gmail.
     fromAddress: text("from_address"),
     // Sign-off appended to every email (initial + follow-ups), above the footer
     signature: text("signature"),
@@ -154,8 +155,20 @@ export const recipients = pgTable(
     name: text("name"),
     // Full sheet row snapshot, used for {{placeholder}} rendering
     rowData: jsonb("row_data").$type<Record<string, string>>().notNull(),
-    // Mapping key for Resend webhook events
+    /** @deprecated Resend era; kept for historical rows, no longer written */
     resendEmailId: text("resend_email_id"),
+    // When this row is due to be dispatched (DB-backed scheduling; Gmail has
+    // no server-side scheduledAt, so a cron-pinged dispatcher sends due rows)
+    scheduledFor: timestamp("scheduled_for"),
+    // Dispatcher mutex: claimed rows are skipped by concurrent runs; stale
+    // claims (>15 min) are reclaimable since function maxDuration is 300s
+    dispatchClaimedAt: timestamp("dispatch_claimed_at"),
+    // Gmail API ids of the last send to this recipient
+    gmailMessageId: text("gmail_message_id"),
+    gmailThreadId: text("gmail_thread_id"),
+    // RFC 2822 Message-ID of the initial send; follow-ups reference it via
+    // In-Reply-To/References so they thread under the original
+    gmailRfcMessageId: text("gmail_rfc_message_id"),
     status: text("status").$type<RecipientStatus>().notNull().default("pending"),
     variant: text("variant").$type<Variant>().notNull().default("A"),
     // 1-based row number in the source sheet, for status write-back
@@ -172,9 +185,12 @@ export const recipients = pgTable(
   (t) => [
     uniqueIndex("recipient_resend_email_id_idx").on(t.resendEmailId),
     index("recipient_campaign_idx").on(t.campaignId),
+    // Hot path for the dispatcher: status='scheduled' AND scheduled_for <= now()
+    index("recipient_dispatch_idx").on(t.status, t.scheduledFor),
   ]
 );
 
+/** @deprecated Resend-era webhook audit log; kept for historical rows */
 export const emailEvents = pgTable(
   "email_event",
   {

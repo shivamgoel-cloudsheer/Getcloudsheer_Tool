@@ -1,6 +1,7 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { accounts } from "@/db/schema";
+import { accounts, users } from "@/db/schema";
+import { GMAIL_SEND_SCOPE } from "@/auth";
 
 /**
  * Returns a valid Google access token for the user, refreshing it via the
@@ -71,4 +72,76 @@ export async function getValidAccessToken(userId: string): Promise<string> {
     );
 
   return tokens.access_token;
+}
+
+// ---------------------------------------------------------------------------
+// Sender mailbox -> linked Google account resolution. Sending happens as the
+// mailbox owner (campaign fromAddress), not the campaign owner, so each
+// sender must have signed in once with the gmail.send scope granted.
+// ---------------------------------------------------------------------------
+
+export class SenderNotLinkedError extends Error {
+  constructor(senderEmail: string) {
+    super(
+      `${senderEmail} hasn't connected Google yet — have them sign in to the dashboard once.`
+    );
+    this.name = "SenderNotLinkedError";
+  }
+}
+
+export class SenderScopeError extends Error {
+  constructor(senderEmail: string) {
+    super(
+      `${senderEmail} needs to re-connect Google to grant send permission (sign out and sign in again).`
+    );
+    this.name = "SenderScopeError";
+  }
+}
+
+export type SenderAccount = {
+  userId: string;
+  scope: string | null;
+  hasRefreshToken: boolean;
+};
+
+/** Finds the linked Google account for a sender mailbox (users.email is the
+ *  Google profile email, so the mailbox maps to its own user row). */
+export async function getSenderAccount(
+  senderEmail: string
+): Promise<SenderAccount | null> {
+  const [row] = await db
+    .select({
+      userId: accounts.userId,
+      scope: accounts.scope,
+      refreshToken: accounts.refresh_token,
+    })
+    .from(users)
+    .innerJoin(accounts, eq(accounts.userId, users.id))
+    .where(
+      and(
+        eq(sql`lower(${users.email})`, senderEmail.trim().toLowerCase()),
+        eq(accounts.provider, "google")
+      )
+    );
+  if (!row) return null;
+  return {
+    userId: row.userId,
+    scope: row.scope,
+    hasRefreshToken: !!row.refreshToken,
+  };
+}
+
+export function hasSendScope(scope: string | null): boolean {
+  return !!scope?.split(" ").includes(GMAIL_SEND_SCOPE);
+}
+
+/** Valid access token for the mailbox itself; throws descriptive errors when
+ *  the sender hasn't linked Google or hasn't granted gmail.send. */
+export async function getAccessTokenForSender(
+  senderEmail: string
+): Promise<string> {
+  const acct = await getSenderAccount(senderEmail);
+  if (!acct) throw new SenderNotLinkedError(senderEmail);
+  if (!hasSendScope(acct.scope)) throw new SenderScopeError(senderEmail);
+  return getValidAccessToken(acct.userId);
 }

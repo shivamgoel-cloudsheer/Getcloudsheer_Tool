@@ -1,18 +1,13 @@
-import { after } from "next/server";
-import { and, eq, isNotNull } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { auth } from "@/auth";
 import { db } from "@/db";
 import { campaigns, recipients } from "@/db/schema";
-import { getResend } from "@/lib/resend";
 
-export const maxDuration = 300;
-
-const DELAY_BETWEEN_CANCELS_MS = 600;
-
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
+/**
+ * Cancelling a scheduled campaign is now a pure DB operation: undispatched
+ * rows go back to pending and the campaign returns to draft. Anything the
+ * dispatcher already sent stays sent.
+ */
 export async function POST(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -24,18 +19,17 @@ export async function POST(
 
   const { id } = await params;
 
-  // Atomic guard: only a scheduled campaign can be cancelled
+  // Guard: only the owner's scheduled campaign can be cancelled
   const [campaign] = await db
-    .update(campaigns)
-    .set({ status: "sending", lastProgressAt: new Date() }) // transient state while cancelling
+    .select({ id: campaigns.id })
+    .from(campaigns)
     .where(
       and(
         eq(campaigns.id, id),
         eq(campaigns.userId, session.user.id),
         eq(campaigns.status, "scheduled")
       )
-    )
-    .returning();
+    );
 
   if (!campaign) {
     return Response.json(
@@ -44,62 +38,30 @@ export async function POST(
     );
   }
 
-  after(() => runCancel(campaign.id));
+  const reverted = await db
+    .update(recipients)
+    .set({
+      status: "pending",
+      scheduledFor: null,
+      dispatchClaimedAt: null,
+      lastEmailAt: null,
+    })
+    .where(
+      and(eq(recipients.campaignId, id), eq(recipients.status, "scheduled"))
+    )
+    .returning({ id: recipients.id });
 
-  return Response.json({ status: "cancelling" }, { status: 202 });
-}
+  await db
+    .update(campaigns)
+    .set({
+      status: "draft",
+      scheduledAt: null,
+      // Keep the truthful count of what actually went out before the cancel
+      sentCount: sql`(SELECT count(*) FROM recipient
+                      WHERE campaign_id = ${id}
+                        AND status NOT IN ('pending', 'scheduled', 'suppressed', 'failed'))`,
+    })
+    .where(eq(campaigns.id, id));
 
-async function runCancel(campaignId: string) {
-  try {
-    const scheduled = await db
-      .select()
-      .from(recipients)
-      .where(
-        and(
-          eq(recipients.campaignId, campaignId),
-          eq(recipients.status, "scheduled"),
-          isNotNull(recipients.resendEmailId)
-        )
-      );
-
-    for (let i = 0; i < scheduled.length; i++) {
-      const r = scheduled[i];
-      // Heartbeat so the reconciler doesn't mistake a long cancel for a stall.
-      if (i % 15 === 0) {
-        await db
-          .update(campaigns)
-          .set({ lastProgressAt: new Date() })
-          .where(eq(campaigns.id, campaignId));
-      }
-      const { error } = await getResend().emails.cancel(r.resendEmailId!);
-
-      if (!error) {
-        // Cleared so the dead email ID can't shadow a future send;
-        // webhooks still resolve via the recipient_id tag if needed.
-        await db
-          .update(recipients)
-          .set({ status: "pending", resendEmailId: null })
-          .where(eq(recipients.id, r.id));
-      } else {
-        // Likely already released for delivery; leave it as scheduled
-        // and let the webhook events advance it normally.
-        console.error(`Failed to cancel ${r.resendEmailId}:`, error.message);
-      }
-
-      if (i < scheduled.length - 1) {
-        await sleep(DELAY_BETWEEN_CANCELS_MS);
-      }
-    }
-
-    await db
-      .update(campaigns)
-      .set({ status: "draft", scheduledAt: null, sentCount: 0 })
-      .where(eq(campaigns.id, campaignId));
-  } catch (error) {
-    console.error("Cancel schedule failed", error);
-    await db
-      .update(campaigns)
-      .set({ status: "failed" })
-      .where(eq(campaigns.id, campaignId));
-  }
+  return Response.json({ cancelled: reverted.length });
 }
