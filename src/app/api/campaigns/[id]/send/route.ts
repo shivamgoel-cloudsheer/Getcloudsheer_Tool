@@ -350,15 +350,18 @@ async function scheduleSend(campaignId: string, schedule: ScheduleConfig) {
     // lastEmailAt = scheduled time mirrors the previous behavior so the
     // senderBudget day-bucketing keeps working; the dispatcher overwrites it
     // with the actual send time.
+    // Each (id, at) is bound as scalar params via a VALUES list; the Neon HTTP
+    // driver does not serialize JS arrays into Postgres array literals, so the
+    // earlier unnest(::uuid[]) form failed with "malformed array literal".
+    const rows = okIds.map(
+      (rid, i) => sql`(${rid}::uuid, ${okTimes[i]}::timestamptz)`
+    );
     await db.execute(sql`
       UPDATE recipient AS r
       SET status = 'scheduled',
           scheduled_for = v.at,
           last_email_at = v.at
-      FROM (
-        SELECT unnest(${okIds}::uuid[]) AS id,
-               unnest(${okTimes}::timestamptz[]) AS at
-      ) v
+      FROM (VALUES ${sql.join(rows, sql`, `)}) AS v(id, at)
       WHERE r.id = v.id
     `);
 
