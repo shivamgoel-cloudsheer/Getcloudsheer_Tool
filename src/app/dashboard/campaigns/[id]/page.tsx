@@ -13,10 +13,10 @@ import {
   Mail,
   MessageSquareReply,
   RefreshCw,
-  Send,
   Trash2,
   TriangleAlert,
   X,
+  Zap,
 } from "lucide-react";
 import { StatusChip } from "@/components/ui";
 import { COUNTRY_OPTIONS } from "@/lib/geo";
@@ -146,6 +146,35 @@ export default function CampaignPage({
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to start sending");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  // Instant send: every recipient goes out right now, no drip/window. The
+  // server still skips suppressed addresses and trims to the daily cap.
+  async function instantSend() {
+    if (
+      !window.confirm(
+        `Send to all ${campaign?.total ?? 0} recipients right now? This goes out immediately, with no delay or send window.`
+      )
+    ) {
+      return;
+    }
+    setSending(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/campaigns/${id}/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ instant: true }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Failed to send");
+      setShowSchedule(false);
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to send");
     } finally {
       setSending(false);
     }
@@ -576,22 +605,37 @@ export default function CampaignPage({
                   </div>
                 </div>
               ) : (
-                <button
-                  onClick={() => setShowSchedule(true)}
-                  disabled={sending}
-                  className="inline-flex items-center gap-2 rounded-xl bg-linear-to-br from-emerald-500 to-teal-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 transition hover:brightness-110 disabled:opacity-40"
-                >
-                  {sending ? (
-                    <Loader2 size={15} className="animate-spin" />
-                  ) : campaign.status === "failed" ? (
-                    <RefreshCw size={15} />
-                  ) : (
-                    <Send size={15} />
-                  )}
-                  {campaign.status === "failed"
-                    ? "Retry failed sends"
-                    : `Send to ${campaign.total} recipients`}
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={() => setShowSchedule(true)}
+                    disabled={sending}
+                    className="inline-flex items-center gap-2 rounded-xl bg-linear-to-br from-emerald-500 to-teal-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 transition hover:brightness-110 disabled:opacity-40"
+                  >
+                    {sending ? (
+                      <Loader2 size={15} className="animate-spin" />
+                    ) : campaign.status === "failed" ? (
+                      <RefreshCw size={15} />
+                    ) : (
+                      <CalendarClock size={15} />
+                    )}
+                    {campaign.status === "failed"
+                      ? "Retry failed sends"
+                      : `Schedule drip (${campaign.total})`}
+                  </button>
+                  <button
+                    onClick={() => instantSend()}
+                    disabled={sending}
+                    title="Send to everyone immediately, with no delay or send window"
+                    className="inline-flex items-center gap-2 rounded-xl bg-linear-to-br from-sky-500 to-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-indigo-500/20 transition hover:brightness-110 disabled:opacity-40"
+                  >
+                    {sending ? (
+                      <Loader2 size={15} className="animate-spin" />
+                    ) : (
+                      <Zap size={15} />
+                    )}
+                    Send now
+                  </button>
+                </div>
               )}
             </>
           )}

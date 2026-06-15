@@ -46,6 +46,10 @@ const DEFAULT_STAGGER: StaggerConfig = {
 };
 
 const bodySchema = z.object({
+  // Instant send: everyone goes out right now, no gap/window/weekend/warmup.
+  // Suppression and the per-sender daily cap still apply (Gmail has hard
+  // sending limits; the cap keeps the mailbox from getting blocked).
+  instant: z.boolean().optional(),
   // Optional drip start time. It becomes the BASE of the stagger, not a single
   // instant everyone is sent at - so the per-sender cap always applies.
   scheduledAt: z.string().datetime({ offset: true }).optional(),
@@ -94,11 +98,21 @@ export async function POST(
     return Response.json({ error: "Invalid schedule input" }, { status: 400 });
   }
 
-  // Every path resolves to a drip: only the base time and the config differ.
+  // Every path resolves to a drip EXCEPT instant, which sends everyone now.
+  const instant = parsed.data.instant === true;
   let base = new Date();
   let cfg: StaggerConfig = DEFAULT_STAGGER;
 
-  if (parsed.data.stagger) {
+  if (instant) {
+    // Keep any provided cap/timezone for the daily-cap guard, but turn off the
+    // gap/window/weekend/warmup behaviour - everyone is scheduled for now.
+    const src = parsed.data.stagger ?? DEFAULT_STAGGER;
+    cfg = {
+      ...src,
+      warmup: false,
+      timeZone: isValidTimeZone(src.timeZone) ? src.timeZone : "UTC",
+    };
+  } else if (parsed.data.stagger) {
     cfg = parsed.data.stagger;
     if (!isValidTimeZone(cfg.timeZone)) {
       return Response.json({ error: "Invalid timezone" }, { status: 400 });
@@ -182,7 +196,7 @@ export async function POST(
   // Scheduling is now a pure DB write (no per-email API calls), so it runs
   // inline and the response reports the real outcome.
   try {
-    const outcome = await scheduleSend(campaign.id, { base, cfg });
+    const outcome = await scheduleSend(campaign.id, { base, cfg, instant });
 
     const finalStatus =
       outcome.scheduled === 0 && outcome.failed > 0 ? "failed" : "scheduled";
@@ -210,7 +224,7 @@ export async function POST(
   }
 }
 
-type ScheduleConfig = { base: Date; cfg: StaggerConfig };
+type ScheduleConfig = { base: Date; cfg: StaggerConfig; instant?: boolean };
 
 async function scheduleSend(campaignId: string, schedule: ScheduleConfig) {
   const [campaign] = await db
@@ -296,7 +310,11 @@ async function scheduleSend(campaignId: string, schedule: ScheduleConfig) {
   // monotonically; otherwise keep the original order.
   let order = toSend;
   let staggerTimes: Date[];
-  if (cfg.perRecipientTimeZone) {
+  if (schedule.instant) {
+    // Everyone is due now; the dispatcher (kicked off inline below) sends them
+    // immediately. The cap guard further down still trims to the daily limit.
+    staggerTimes = order.map(() => schedule.base);
+  } else if (cfg.perRecipientTimeZone) {
     const withTz = toSend.map((r) => ({
       r,
       tz: resolveRecipientZone(r.rowData, cfg.timeZone),
