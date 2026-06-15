@@ -35,15 +35,15 @@ export default async function GatePage({
   const { error } = await searchParams;
 
   return (
-    <main className="flex min-h-screen flex-1 items-center justify-center bg-neutral-950 px-6">
-      <div className="w-full max-w-sm rounded-2xl border border-neutral-800 bg-neutral-900 p-8 text-center">
+    <main className="flex min-h-screen flex-1 items-center justify-center bg-slate-50 px-6">
+      <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
         <div className="flex justify-center">
           <Logo size="lg" />
         </div>
-        <h1 className="mt-5 text-lg font-semibold text-white">
+        <h1 className="mt-5 text-lg font-semibold text-slate-900">
           CloudSheer Outreach
         </h1>
-        <p className="mt-1.5 text-sm text-neutral-500">
+        <p className="mt-1.5 text-sm text-slate-500">
           This tool is for the CloudSheer team. Enter the access password.
         </p>
 
@@ -53,16 +53,16 @@ export default async function GatePage({
             name="password"
             autoFocus
             placeholder="Access password"
-            className="w-full rounded-xl border border-neutral-800 bg-neutral-950/60 px-3.5 py-2.5 text-center text-sm text-neutral-100 placeholder-neutral-600 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
+            className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-center text-sm text-slate-900 placeholder-slate-400 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30"
           />
           {error && (
-            <p className="text-xs text-red-400">
+            <p className="text-xs text-red-600">
               Wrong password. Try again.
             </p>
           )}
           <button
             type="submit"
-            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-linear-to-br from-sky-500 to-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-sky-500/20 transition hover:brightness-110"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-linear-to-br from-sky-500 to-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-indigo-500/25 transition hover:brightness-110"
           >
             <Lock size={14} />
             Unlock

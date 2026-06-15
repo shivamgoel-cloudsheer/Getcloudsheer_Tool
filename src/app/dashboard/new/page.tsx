@@ -57,7 +57,7 @@ const defaultSignature = (name: string) =>
 const isEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
 
 const inputClass =
-  "w-full rounded-xl border border-neutral-800 bg-neutral-950/60 px-3.5 py-2.5 text-sm text-neutral-100 placeholder-neutral-600 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20";
+  "w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder-slate-400 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30";
 
 export default function NewCampaignPage() {
   const router = useRouter();
@@ -201,7 +201,7 @@ export default function NewCampaignPage() {
     <div className="mx-auto max-w-3xl">
       <Link
         href="/dashboard"
-        className="inline-flex items-center gap-1.5 text-xs text-neutral-500 transition hover:text-neutral-300"
+        className="inline-flex items-center gap-1.5 text-xs text-slate-500 transition hover:text-slate-700"
       >
         <ArrowLeft size={13} />
         Back to campaigns
@@ -221,10 +221,10 @@ export default function NewCampaignPage() {
               }}
               className={`flex items-center gap-2 rounded-full px-3.5 py-1.5 text-xs font-medium transition ${
                 step === i
-                  ? "bg-sky-500/15 text-sky-300 ring-1 ring-inset ring-sky-500/40"
+                  ? "bg-sky-500/15 text-sky-600 ring-1 ring-inset ring-sky-500/40"
                   : step > i
-                    ? "text-emerald-400"
-                    : "text-neutral-500"
+                    ? "text-emerald-600"
+                    : "text-slate-500"
               }`}
             >
               {step > i ? <Check size={13} /> : <s.icon size={13} />}
@@ -232,7 +232,7 @@ export default function NewCampaignPage() {
             </button>
             {i < STEPS.length - 1 && (
               <div
-                className={`h-px flex-1 ${step > i ? "bg-emerald-500/40" : "bg-neutral-800"}`}
+                className={`h-px flex-1 ${step > i ? "bg-emerald-500/40" : "bg-slate-200"}`}
               />
             )}
           </div>
@@ -247,9 +247,9 @@ export default function NewCampaignPage() {
 
       {/* Step 1: connect sheet */}
       {step === 0 && (
-        <section className="mt-5 rounded-2xl border border-neutral-800/80 bg-neutral-900/60 p-6">
+        <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="font-medium">Connect your Google Sheet</h2>
-          <p className="mt-1 text-sm text-neutral-500">
+          <p className="mt-1 text-sm text-slate-500">
             Row 1 must be headers. An Email column is required; every other
             column becomes a placeholder.
           </p>
@@ -274,19 +274,19 @@ export default function NewCampaignPage() {
           {preview && (
             <div className="mt-5">
               <div className="flex items-center gap-2 text-sm">
-                <Check size={15} className="text-emerald-400" />
-                <span className="text-neutral-300">
+                <Check size={15} className="text-emerald-500" />
+                <span className="text-slate-700">
                   {preview.totalRows} rows loaded
                 </span>
                 {preview.emailColumn ? (
-                  <span className="text-neutral-500">
+                  <span className="text-slate-500">
                     · email column{" "}
-                    <span className="font-medium text-emerald-400">
+                    <span className="font-medium text-emerald-600">
                       {preview.emailColumn}
                     </span>
                   </span>
                 ) : (
-                  <span className="text-red-400">
+                  <span className="text-red-500">
                     · no email column found - add one named Email
                   </span>
                 )}
@@ -294,7 +294,7 @@ export default function NewCampaignPage() {
 
               {preview.tabs.length > 1 && (
                 <div className="mt-4">
-                  <label className="mb-1.5 block text-xs font-medium text-neutral-400">
+                  <label className="mb-1.5 block text-xs font-medium text-slate-500">
                     Worksheet
                   </label>
                   <select
@@ -314,7 +314,7 @@ export default function NewCampaignPage() {
 
               <div className="mt-4">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-medium text-neutral-400">
+                  <label className="text-xs font-medium text-slate-500">
                     Columns to include ({selectedColumns.length}/
                     {preview.headers.length})
                   </label>
@@ -322,7 +322,7 @@ export default function NewCampaignPage() {
                     <button
                       type="button"
                       onClick={() => setSelectedColumns(preview.headers)}
-                      className="text-sky-400 transition hover:text-sky-300"
+                      className="text-sky-600 transition hover:text-sky-500"
                     >
                       All
                     </button>
@@ -333,7 +333,7 @@ export default function NewCampaignPage() {
                           preview.emailColumn ? [preview.emailColumn] : []
                         )
                       }
-                      className="text-neutral-500 transition hover:text-neutral-300"
+                      className="text-slate-500 transition hover:text-slate-700"
                     >
                       None
                     </button>
@@ -360,8 +360,8 @@ export default function NewCampaignPage() {
                         }
                         className={`rounded-md border px-2 py-1 text-[11px] transition ${
                           on
-                            ? "border-sky-500/50 bg-sky-500/10 text-sky-300"
-                            : "border-neutral-800 bg-neutral-950/60 text-neutral-500 hover:text-neutral-300"
+                            ? "border-sky-500/50 bg-sky-500/10 text-sky-600"
+                            : "border-slate-200 bg-white text-slate-500 hover:text-slate-700"
                         } ${locked ? "cursor-not-allowed opacity-80" : ""}`}
                       >
                         {h}
@@ -372,9 +372,9 @@ export default function NewCampaignPage() {
                 </div>
               </div>
 
-              <div className="mt-3 overflow-x-auto rounded-xl border border-neutral-800">
+              <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200">
                 <table className="w-full text-left text-xs">
-                  <thead className="bg-neutral-900 text-neutral-400">
+                  <thead className="bg-white text-slate-500">
                     <tr>
                       {preview.headers.map((h) => (
                         <th key={h} className="px-3 py-2.5 font-medium">
@@ -385,11 +385,11 @@ export default function NewCampaignPage() {
                   </thead>
                   <tbody>
                     {preview.sampleRows.map((row, i) => (
-                      <tr key={i} className="border-t border-neutral-800/70">
+                      <tr key={i} className="border-t border-slate-200">
                         {preview.headers.map((h) => (
                           <td
                             key={h}
-                            className="max-w-50 truncate px-3 py-2 text-neutral-300"
+                            className="max-w-50 truncate px-3 py-2 text-slate-700"
                           >
                             {row[h]}
                           </td>
@@ -416,11 +416,11 @@ export default function NewCampaignPage() {
 
       {/* Step 2: compose */}
       {step === 1 && preview && (
-        <section className="mt-5 rounded-2xl border border-neutral-800/80 bg-neutral-900/60 p-6">
+        <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="font-medium">Compose your email</h2>
           <div className="mt-4 space-y-4">
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-neutral-400">
+              <label className="mb-1.5 block text-xs font-medium text-slate-500">
                 Campaign name (only you see this)
               </label>
               <input
@@ -431,7 +431,7 @@ export default function NewCampaignPage() {
               />
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-neutral-400">
+              <label className="mb-1.5 block text-xs font-medium text-slate-500">
                 From
               </label>
               <select
@@ -484,7 +484,7 @@ export default function NewCampaignPage() {
             {customSender && (
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
-                  <label className="mb-1.5 block text-xs font-medium text-neutral-400">
+                  <label className="mb-1.5 block text-xs font-medium text-slate-500">
                     From name
                   </label>
                   <input
@@ -499,7 +499,7 @@ export default function NewCampaignPage() {
                   />
                 </div>
                 <div>
-                  <label className="mb-1.5 block text-xs font-medium text-neutral-400">
+                  <label className="mb-1.5 block text-xs font-medium text-slate-500">
                     From email
                   </label>
                   <input
@@ -509,11 +509,11 @@ export default function NewCampaignPage() {
                     onChange={(e) => setFromEmail(e.target.value)}
                   />
                   {fromEmail.trim() && !isEmail(fromEmail) && (
-                    <p className="mt-1 text-xs text-red-400">
+                    <p className="mt-1 text-xs text-red-500">
                       Enter a valid email address.
                     </p>
                   )}
-                  <p className="mt-1 text-xs text-neutral-600">
+                  <p className="mt-1 text-xs text-slate-400">
                     Emails send through this mailbox&apos;s own Gmail, so its
                     owner must have signed in to the dashboard with Google
                     once.
@@ -523,7 +523,7 @@ export default function NewCampaignPage() {
             )}
 
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-neutral-400">
+              <label className="mb-1.5 block text-xs font-medium text-slate-500">
                 Signature
               </label>
               <textarea
@@ -535,13 +535,13 @@ export default function NewCampaignPage() {
                   setSigTouched(true);
                 }}
               />
-              <p className="mt-1 text-xs text-neutral-600">
+              <p className="mt-1 text-xs text-slate-400">
                 Added automatically to every email (including follow-ups), above
                 the footer. Leave blank for no signature.
               </p>
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-neutral-400">
+              <label className="mb-1.5 block text-xs font-medium text-slate-500">
                 Subject
               </label>
               <input
@@ -552,7 +552,7 @@ export default function NewCampaignPage() {
               />
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-neutral-400">
+              <label className="mb-1.5 block text-xs font-medium text-slate-500">
                 Body
               </label>
               <textarea
@@ -562,26 +562,26 @@ export default function NewCampaignPage() {
                 onChange={(e) => setBody(e.target.value)}
               />
               <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-                <span className="text-xs text-neutral-600">Insert:</span>
+                <span className="text-xs text-slate-400">Insert:</span>
                 {selectedColumns.map((h) => (
                   <button
                     key={h}
                     type="button"
                     onClick={() => setBody((prev) => `${prev}{{${h}}}`)}
-                    className="rounded-md border border-neutral-800 bg-neutral-950/60 px-2 py-1 font-mono text-[11px] text-neutral-400 transition hover:border-sky-500/50 hover:text-sky-300"
+                    className="rounded-md border border-slate-200 bg-white px-2 py-1 font-mono text-[11px] text-slate-500 transition hover:border-sky-500/50 hover:text-sky-600"
                   >
                     {`{{${h}}}`}
                   </button>
                 ))}
               </div>
-              <p className="mt-2 text-xs text-neutral-600">
+              <p className="mt-2 text-xs text-slate-400">
                 Emails send as plain text - just your body and signature, no
                 footer.
               </p>
             </div>
 
             {/* A/B testing */}
-            <div className="rounded-xl border border-neutral-800 bg-neutral-950/40 p-4">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 shadow-sm">
               <label className="flex cursor-pointer items-center gap-2.5">
                 <input
                   type="checkbox"
@@ -589,10 +589,10 @@ export default function NewCampaignPage() {
                   onChange={(e) => setAbEnabled(e.target.checked)}
                   className="h-4 w-4 rounded accent-sky-500"
                 />
-                <span className="text-sm font-medium text-neutral-200">
+                <span className="text-sm font-medium text-slate-800">
                   A/B test
                 </span>
-                <span className="text-xs text-neutral-500">
+                <span className="text-xs text-slate-500">
                   Half your recipients get variant B; compare results per
                   variant
                 </span>
@@ -600,7 +600,7 @@ export default function NewCampaignPage() {
               {abEnabled && (
                 <div className="mt-4 space-y-3">
                   <div>
-                    <label className="mb-1.5 block text-xs font-medium text-neutral-400">
+                    <label className="mb-1.5 block text-xs font-medium text-slate-500">
                       Subject B
                     </label>
                     <input
@@ -611,7 +611,7 @@ export default function NewCampaignPage() {
                     />
                   </div>
                   <div>
-                    <label className="mb-1.5 block text-xs font-medium text-neutral-400">
+                    <label className="mb-1.5 block text-xs font-medium text-slate-500">
                       Body B (optional - leave empty to reuse body A)
                     </label>
                     <textarea
@@ -644,7 +644,7 @@ export default function NewCampaignPage() {
           <div className="mt-6 flex items-center justify-between">
             <button
               onClick={() => setStep(0)}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-neutral-800 px-4 py-2.5 text-sm text-neutral-300 transition hover:bg-neutral-900"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-700 transition hover:bg-slate-50"
             >
               <ArrowLeft size={15} />
               Back
@@ -664,15 +664,15 @@ export default function NewCampaignPage() {
       {/* Step 3: review */}
       {step === 2 && preview && previewRow && (
         <section className="mt-5">
-          <div className="rounded-2xl border border-neutral-800/80 bg-neutral-900/60 p-6">
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h2 className="font-medium">Preview</h2>
-              <div className="flex items-center gap-2 text-xs text-neutral-500">
+              <div className="flex items-center gap-2 text-xs text-slate-500">
                 Previewing row
                 <select
                   value={previewRowIndex}
                   onChange={(e) => setPreviewRowIndex(Number(e.target.value))}
-                  className="rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs text-neutral-300 outline-none"
+                  className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30"
                 >
                   {preview.sampleRows.map((row, i) => (
                     <option key={i} value={i}>
@@ -684,7 +684,7 @@ export default function NewCampaignPage() {
             </div>
 
             {/* Email client mock */}
-            <div className="mt-4 overflow-hidden rounded-xl border border-neutral-800 bg-white text-neutral-900 shadow-2xl">
+            <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white text-neutral-900 shadow-2xl">
               <div className="border-b border-neutral-200 bg-neutral-50 px-5 py-3.5">
                 <p className="text-sm font-semibold">
                   {renderedSubject || "(no subject)"}
@@ -703,9 +703,9 @@ export default function NewCampaignPage() {
               </div>
             </div>
 
-            <div className="mt-5 rounded-xl border border-neutral-800 bg-neutral-950/60 px-4 py-3 text-sm text-neutral-400">
+            <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
               This will create a draft for{" "}
-              <span className="font-semibold text-neutral-200">
+              <span className="font-semibold text-slate-800">
                 {preview.totalRows} recipients
               </span>
               . Nothing sends until you press Send on the next screen.
@@ -715,7 +715,7 @@ export default function NewCampaignPage() {
           <div className="mt-5 flex items-center justify-between">
             <button
               onClick={() => setStep(1)}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-neutral-800 px-4 py-2.5 text-sm text-neutral-300 transition hover:bg-neutral-900"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-700 transition hover:bg-slate-50"
             >
               <ArrowLeft size={15} />
               Back
@@ -723,7 +723,7 @@ export default function NewCampaignPage() {
             <button
               onClick={createCampaign}
               disabled={creating}
-              className="inline-flex items-center gap-2 rounded-xl bg-linear-to-br from-sky-500 to-indigo-600 px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-sky-500/20 transition hover:brightness-110 disabled:opacity-40"
+              className="inline-flex items-center gap-2 rounded-xl bg-linear-to-br from-sky-500 to-indigo-600 px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-indigo-500/25 transition hover:brightness-110 disabled:opacity-40"
             >
               {creating ? (
                 <Loader2 size={15} className="animate-spin" />

@@ -24,13 +24,13 @@ export default async function DashboardLayout({
   const needsRelink = !!ownAccount && !hasSendScope(ownAccount.scope);
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100">
-      <header className="sticky top-0 z-20 border-b border-neutral-800/80 bg-neutral-950/80 backdrop-blur">
+    <div className="min-h-screen bg-slate-50 text-slate-900">
+      <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/80 backdrop-blur">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-3.5">
           <Link href="/dashboard" className="flex items-center gap-2.5">
             <Logo />
-            <span className="text-sm font-semibold tracking-wide">
-              CloudSheer <span className="text-sky-400">Outreach</span>
+            <span className="text-sm font-semibold tracking-wide text-slate-900">
+              CloudSheer <span className="text-indigo-600">Outreach</span>
             </span>
           </Link>
           <div className="flex items-center gap-3">
@@ -41,16 +41,16 @@ export default async function DashboardLayout({
                   alt=""
                   width={28}
                   height={28}
-                  className="rounded-full ring-1 ring-neutral-700"
+                  className="rounded-full ring-1 ring-slate-200"
                 />
               ) : (
-                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-neutral-800 text-xs font-medium text-neutral-300">
+                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-xs font-medium text-slate-600">
                   {(session.user.name ?? session.user.email ?? "?")
                     .charAt(0)
                     .toUpperCase()}
                 </span>
               )}
-              <span className="text-xs text-neutral-400">
+              <span className="text-xs text-slate-500">
                 {session.user.email}
               </span>
             </div>
@@ -63,7 +63,7 @@ export default async function DashboardLayout({
               <button
                 type="submit"
                 title="Sign out"
-                className="flex items-center gap-1.5 rounded-lg border border-neutral-800 px-3 py-1.5 text-xs text-neutral-400 transition hover:border-neutral-700 hover:bg-neutral-900 hover:text-neutral-200"
+                className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-500 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900"
               >
                 <LogOut size={13} />
                 Sign out
@@ -73,9 +73,9 @@ export default async function DashboardLayout({
         </div>
       </header>
       {needsRelink && (
-        <div className="border-b border-amber-900/50 bg-amber-950/40">
+        <div className="border-b border-amber-200 bg-amber-50">
           <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-6 py-2.5">
-            <p className="flex items-center gap-2 text-xs text-amber-200">
+            <p className="flex items-center gap-2 text-xs text-amber-800">
               <AlertTriangle size={14} className="shrink-0" />
               Sending now goes through your own Gmail. Re-connect Google to
               grant send access.
@@ -88,7 +88,7 @@ export default async function DashboardLayout({
             >
               <button
                 type="submit"
-                className="whitespace-nowrap rounded-lg border border-amber-700/60 px-3 py-1.5 text-xs font-medium text-amber-200 transition hover:bg-amber-900/40"
+                className="whitespace-nowrap rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-800 transition hover:bg-amber-100"
               >
                 Re-connect Google
               </button>

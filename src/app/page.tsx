@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { FileSpreadsheet, MousePointerClick, Send, Wand2 } from "lucide-react";
+import { CalendarClock, FileSpreadsheet, Inbox, MessageSquareReply } from "lucide-react";
 import { auth, signIn } from "@/auth";
 import { Logo } from "@/components/ui";
 
@@ -7,22 +7,22 @@ const FEATURES = [
   {
     icon: FileSpreadsheet,
     title: "Sheet-native",
-    text: "Your Google Sheet is the source of truth. No CSV exports, no imports.",
+    text: "Your Google Sheet is the source of truth. No CSV exports, no imports - pick a tab and columns and go.",
   },
   {
-    icon: Wand2,
-    title: "Personalized",
-    text: "Any column becomes a {{placeholder}} in your subject and body.",
+    icon: Inbox,
+    title: "Sent from your inbox",
+    text: "Emails go out through your own Gmail, so they read as personal and land in the inbox - not a promo tab.",
   },
   {
-    icon: Send,
-    title: "Send or schedule",
-    text: "Send now or pick a time up to 30 days out. Cancel anytime before it fires.",
+    icon: CalendarClock,
+    title: "Smart scheduling",
+    text: "Drip-send in business hours, in each recipient's own timezone, with daily limits and warm-up built in.",
   },
   {
-    icon: MousePointerClick,
-    title: "Tracked",
-    text: "Watch delivers, opens, and clicks land per recipient in real time.",
+    icon: MessageSquareReply,
+    title: "Reply-focused",
+    text: "Track replies and bounces, run multi-step follow-ups, and auto-stop the moment someone responds.",
   },
 ];
 
@@ -33,23 +33,24 @@ export default async function Home() {
   }
 
   return (
-    <main className="relative flex min-h-screen flex-1 items-center justify-center overflow-hidden bg-neutral-950 px-6 py-16">
+    <main className="relative flex min-h-screen flex-1 items-center justify-center overflow-hidden bg-slate-50 px-6 py-16">
       {/* ambient glow */}
-      <div className="pointer-events-none absolute -top-40 left-1/2 h-130 w-225 -translate-x-1/2 rounded-full bg-sky-500/10 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-60 left-1/4 h-100 w-150 rounded-full bg-indigo-500/10 blur-3xl" />
+      <div className="pointer-events-none absolute -top-40 left-1/2 h-130 w-225 -translate-x-1/2 rounded-full bg-sky-200/40 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-60 left-1/4 h-100 w-150 rounded-full bg-indigo-200/40 blur-3xl" />
 
       <div className="relative w-full max-w-3xl">
         <div className="flex flex-col items-center text-center">
           <Logo size="lg" />
-          <p className="mt-5 text-xs font-semibold uppercase tracking-[0.2em] text-sky-400">
+          <p className="mt-5 text-xs font-semibold uppercase tracking-[0.2em] text-indigo-600">
             CloudSheer Outreach
           </p>
-          <h1 className="mt-3 max-w-xl text-balance text-4xl font-semibold leading-tight text-white sm:text-5xl">
-            Your Google Sheet, turned into an email campaign
+          <h1 className="mt-3 max-w-xl text-balance text-4xl font-semibold leading-tight text-slate-900 sm:text-5xl">
+            Your Google Sheet, turned into a personalized campaign
           </h1>
-          <p className="mt-4 max-w-md text-pretty text-sm leading-relaxed text-neutral-400">
-            Sign in, paste a sheet, personalize with placeholders, and track
-            every open and click - all from one dashboard.
+          <p className="mt-4 max-w-md text-pretty text-sm leading-relaxed text-slate-600">
+            Sign in, point at a sheet, personalize with placeholders, and send
+            from your own inbox - scheduled to each recipient&apos;s timezone,
+            with replies and follow-ups handled for you.
           </p>
 
           <form
@@ -61,7 +62,7 @@ export default async function Home() {
           >
             <button
               type="submit"
-              className="inline-flex items-center gap-3 rounded-xl bg-white px-6 py-3.5 text-sm font-semibold text-neutral-900 shadow-xl shadow-sky-500/10 transition hover:-translate-y-0.5 hover:bg-neutral-100"
+              className="inline-flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-6 py-3.5 text-sm font-semibold text-slate-800 shadow-sm transition hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-md"
             >
               <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
                 <path
@@ -84,9 +85,9 @@ export default async function Home() {
               Continue with Google
             </button>
           </form>
-          <p className="mt-4 text-xs text-neutral-500">
-            Includes read-only access to your Google Sheets for loading
-            recipients.
+          <p className="mt-4 text-xs text-slate-500">
+            Includes read-only access to your Google Sheets and permission to
+            send from your Gmail.
           </p>
         </div>
 
@@ -94,13 +95,13 @@ export default async function Home() {
           {FEATURES.map((f) => (
             <div
               key={f.title}
-              className="rounded-2xl border border-neutral-800/80 bg-neutral-900/60 p-5 backdrop-blur transition hover:border-neutral-700"
+              className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
             >
-              <f.icon size={18} className="text-sky-400" />
-              <p className="mt-3 text-sm font-semibold text-neutral-100">
+              <f.icon size={18} className="text-indigo-600" />
+              <p className="mt-3 text-sm font-semibold text-slate-900">
                 {f.title}
               </p>
-              <p className="mt-1.5 text-xs leading-relaxed text-neutral-400">
+              <p className="mt-1.5 text-xs leading-relaxed text-slate-600">
                 {f.text}
               </p>
             </div>

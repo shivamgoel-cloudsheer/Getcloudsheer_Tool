@@ -274,7 +274,7 @@ export default function CampaignPage({
 
   if (!data) {
     return (
-      <div className="flex items-center justify-center py-32 text-neutral-500">
+      <div className="flex items-center justify-center py-32 text-slate-500">
         {error ?? (
           <span className="inline-flex items-center gap-2 text-sm">
             <Loader2 size={15} className="animate-spin" />
@@ -308,7 +308,7 @@ export default function CampaignPage({
       value: campaign.sentCount,
       sub: `of ${campaign.total}`,
       bar: campaign.total > 0 ? (campaign.sentCount / campaign.total) * 100 : 0,
-      barClass: "bg-neutral-500",
+      barClass: "bg-slate-400",
     },
     {
       icon: CheckCheck,
@@ -342,7 +342,7 @@ export default function CampaignPage({
     <div>
       <Link
         href="/dashboard"
-        className="inline-flex items-center gap-1.5 text-xs text-neutral-500 transition hover:text-neutral-300"
+        className="inline-flex items-center gap-1.5 text-xs text-slate-500 transition hover:text-slate-700"
       >
         <ArrowLeft size={13} />
         Back to campaigns
@@ -354,13 +354,13 @@ export default function CampaignPage({
             <h1 className="truncate text-xl font-semibold">{campaign.name}</h1>
             <StatusChip status={campaign.status} />
             {campaign.hasVariantB && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-sky-500/15 px-2.5 py-0.5 text-xs font-medium text-sky-300 ring-1 ring-inset ring-sky-500/30">
+              <span className="inline-flex items-center gap-1 rounded-full bg-sky-500/15 px-2.5 py-0.5 text-xs font-medium text-sky-700 ring-1 ring-inset ring-sky-500/30">
                 <FlaskConical size={11} />
                 A/B
               </span>
             )}
           </div>
-          <p className="mt-1 truncate text-sm text-neutral-500">
+          <p className="mt-1 truncate text-sm text-slate-500">
             Subject: {campaign.subjectTemplate}
           </p>
         </div>
@@ -371,7 +371,7 @@ export default function CampaignPage({
               onClick={runProcess}
               disabled={processing}
               title="Check Gmail for replies, send due follow-ups, sync the sheet"
-              className="inline-flex items-center gap-2 rounded-xl border border-neutral-800 px-4 py-2.5 text-sm text-neutral-300 transition hover:bg-neutral-900 disabled:opacity-40"
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-700 transition hover:bg-slate-50 disabled:opacity-40"
             >
               {processing ? (
                 <Loader2 size={15} className="animate-spin" />
@@ -385,12 +385,12 @@ export default function CampaignPage({
           {(campaign.status === "draft" || campaign.status === "failed") && (
             <>
               {showSchedule ? (
-                <div className="w-full max-w-md rounded-2xl border border-neutral-800 bg-neutral-900/80 p-4 sm:w-auto">
+                <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-xl sm:w-auto">
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-semibold">Drip send options</p>
                     <button
                       onClick={() => setShowSchedule(false)}
-                      className="rounded-lg p-1.5 text-neutral-500 transition hover:bg-neutral-800 hover:text-neutral-300"
+                      className="rounded-lg p-1.5 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
                       title="Close"
                     >
                       <X size={14} />
@@ -399,9 +399,9 @@ export default function CampaignPage({
 
                   <div className="mt-3 space-y-3">
                     <div>
-                      <label className="mb-1 block text-xs text-neutral-400">
+                      <label className="mb-1 block text-xs text-slate-500">
                         Start time{" "}
-                        <span className="text-neutral-600">
+                        <span className="text-slate-400">
                           (leave empty to start now)
                         </span>
                       </label>
@@ -409,20 +409,20 @@ export default function CampaignPage({
                         type="datetime-local"
                         value={scheduleTime}
                         onChange={(e) => setScheduleTime(e.target.value)}
-                        className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-sky-500 [color-scheme:dark]"
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30"
                       />
                     </div>
 
-                    <p className="text-xs text-neutral-500">
+                    <p className="text-xs text-slate-500">
                       Every campaign is dripped: emails go out one at a time
                       with a gap, only inside the window, capped per day per
                       sender.
                     </p>
 
-                    <div className="space-y-2.5 rounded-xl border border-neutral-800 bg-neutral-950/50 p-3">
+                    <div className="space-y-2.5 rounded-xl border border-slate-200 bg-slate-50 p-3">
                       <div className="grid grid-cols-2 gap-2.5">
                         <div>
-                          <label className="mb-1 block text-xs text-neutral-500">
+                          <label className="mb-1 block text-xs text-slate-500">
                             Gap between emails (min)
                           </label>
                           <input
@@ -433,11 +433,11 @@ export default function CampaignPage({
                             onChange={(e) =>
                               setGapMinutes(Number(e.target.value))
                             }
-                            className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2.5 py-1.5 text-sm text-neutral-100 outline-none focus:border-sky-500"
+                            className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30"
                           />
                         </div>
                         <div>
-                          <label className="mb-1 block text-xs text-neutral-500">
+                          <label className="mb-1 block text-xs text-slate-500">
                             Max per day / sender
                           </label>
                           <input
@@ -450,42 +450,42 @@ export default function CampaignPage({
                                 Math.min(100, Math.max(1, Number(e.target.value)))
                               )
                             }
-                            className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2.5 py-1.5 text-sm text-neutral-100 outline-none focus:border-sky-500"
+                            className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30"
                           />
                         </div>
                       </div>
                       <div className="grid grid-cols-2 gap-2.5">
                         <div>
-                          <label className="mb-1 block text-xs text-neutral-500">
+                          <label className="mb-1 block text-xs text-slate-500">
                             Window start
                           </label>
                           <input
                             type="time"
                             value={windowStart}
                             onChange={(e) => setWindowStart(e.target.value)}
-                            className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2.5 py-1.5 text-sm text-neutral-100 outline-none focus:border-sky-500 [color-scheme:dark]"
+                            className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30"
                           />
                         </div>
                         <div>
-                          <label className="mb-1 block text-xs text-neutral-500">
+                          <label className="mb-1 block text-xs text-slate-500">
                             Window end
                           </label>
                           <input
                             type="time"
                             value={windowEnd}
                             onChange={(e) => setWindowEnd(e.target.value)}
-                            className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2.5 py-1.5 text-sm text-neutral-100 outline-none focus:border-sky-500 [color-scheme:dark]"
+                            className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30"
                           />
                         </div>
                       </div>
                       <div>
-                        <label className="mb-1 block text-xs text-neutral-500">
+                        <label className="mb-1 block text-xs text-slate-500">
                           Window timezone (country)
                         </label>
                         <select
                           value={windowTz}
                           onChange={(e) => setWindowTz(e.target.value)}
-                          className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2.5 py-1.5 text-sm text-neutral-100 outline-none focus:border-sky-500"
+                          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30"
                         >
                           <option value="">My timezone</option>
                           {COUNTRY_OPTIONS.map((c) => (
@@ -494,7 +494,7 @@ export default function CampaignPage({
                             </option>
                           ))}
                         </select>
-                        <p className="mt-1 text-xs text-neutral-600">
+                        <p className="mt-1 text-xs text-slate-400">
                           The {windowStart}-{windowEnd} window runs in this
                           country&apos;s local time.
                           {recipientLocalTz
@@ -502,7 +502,7 @@ export default function CampaignPage({
                             : ""}
                         </p>
                       </div>
-                      <label className="flex cursor-pointer items-center gap-2 text-xs text-neutral-400">
+                      <label className="flex cursor-pointer items-center gap-2 text-xs text-slate-500">
                         <input
                           type="checkbox"
                           checked={skipWeekends}
@@ -512,7 +512,7 @@ export default function CampaignPage({
                         Skip weekends
                       </label>
                       <label
-                        className="flex cursor-pointer items-center gap-2 text-xs text-neutral-400"
+                        className="flex cursor-pointer items-center gap-2 text-xs text-slate-500"
                         title="New sender mailboxes ramp up gradually (10/day, +25% every 3 days) to the cap to protect reputation"
                       >
                         <input
@@ -524,7 +524,7 @@ export default function CampaignPage({
                         Warm-up new senders (ramp up to the cap)
                       </label>
                       <label
-                        className="flex cursor-pointer items-center gap-2 text-xs text-neutral-400"
+                        className="flex cursor-pointer items-center gap-2 text-xs text-slate-500"
                         title="Each recipient is sent inside their own country's business hours, read from a Country or Timezone column in your sheet (keep that column included)"
                       >
                         <input
@@ -536,11 +536,11 @@ export default function CampaignPage({
                         Send in each recipient&apos;s local time (Country/Timezone
                         column)
                       </label>
-                      <p className="text-xs text-amber-400/80">
+                      <p className="text-xs text-amber-600">
                         Sends happen only inside the window. A start time
                         outside it rolls to the next window opening.
                       </p>
-                      <p className="text-xs text-neutral-500">
+                      <p className="text-xs text-slate-500">
                         {(() => {
                           const remaining =
                             campaign.total - campaign.sentCount > 0
@@ -597,7 +597,7 @@ export default function CampaignPage({
           )}
 
           {campaign.status === "sending" && (
-            <span className="inline-flex items-center gap-2 rounded-full bg-amber-500/15 px-4 py-2 text-sm text-amber-300 ring-1 ring-inset ring-amber-500/30">
+            <span className="inline-flex items-center gap-2 rounded-full bg-amber-500/15 px-4 py-2 text-sm text-amber-700 ring-1 ring-inset ring-amber-500/30">
               <Loader2 size={14} className="animate-spin" />
               Working... {campaign.sentCount}/{campaign.total}
             </span>
@@ -605,7 +605,7 @@ export default function CampaignPage({
 
           {campaign.status === "scheduled" && (
             <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-2 rounded-full bg-amber-500/15 px-4 py-2 text-sm text-amber-300 ring-1 ring-inset ring-amber-500/30">
+              <span className="inline-flex items-center gap-2 rounded-full bg-amber-500/15 px-4 py-2 text-sm text-amber-700 ring-1 ring-inset ring-amber-500/30">
                 <CalendarClock size={14} />
                 {campaign.scheduledAt
                   ? new Date(campaign.scheduledAt).toLocaleString()
@@ -614,7 +614,7 @@ export default function CampaignPage({
               <button
                 onClick={cancelSchedule}
                 disabled={sending}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-red-500/40 px-4 py-2 text-sm text-red-300 transition hover:bg-red-500/10 disabled:opacity-40"
+                className="inline-flex items-center gap-1.5 rounded-xl border border-red-200 bg-white px-4 py-2 text-sm text-red-600 transition hover:bg-red-50 disabled:opacity-40"
               >
                 <X size={14} />
                 {sending ? "Cancelling..." : "Cancel"}
@@ -626,7 +626,7 @@ export default function CampaignPage({
             onClick={deleteCampaign}
             disabled={sending}
             title="Delete campaign"
-            className="rounded-xl border border-neutral-800 p-2.5 text-neutral-500 transition hover:border-red-500/40 hover:bg-red-500/10 hover:text-red-400 disabled:opacity-40"
+            className="rounded-xl border border-slate-300 bg-white p-2.5 text-slate-500 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:opacity-40"
           >
             <Trash2 size={15} />
           </button>
@@ -634,12 +634,12 @@ export default function CampaignPage({
       </div>
 
       {notice && (
-        <div className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300">
+        <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
           {notice}
         </div>
       )}
       {error && (
-        <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+        <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
         </div>
       )}
@@ -648,17 +648,17 @@ export default function CampaignPage({
         {stats.map((s) => (
           <div
             key={s.label}
-            className="rounded-2xl border border-neutral-800/80 bg-neutral-900/60 p-4"
+            className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
           >
-            <div className="flex items-center gap-2 text-neutral-500">
+            <div className="flex items-center gap-2 text-slate-500">
               <s.icon size={14} />
               <p className="text-xs">{s.label}</p>
             </div>
             <div className="mt-2 flex items-baseline gap-2">
-              <p className="text-2xl font-semibold tracking-tight">{s.value}</p>
-              <p className="text-xs text-neutral-500">{s.sub}</p>
+              <p className="text-2xl font-semibold tracking-tight text-slate-900">{s.value}</p>
+              <p className="text-xs text-slate-500">{s.sub}</p>
             </div>
-            <div className="mt-3 h-1 overflow-hidden rounded-full bg-neutral-800">
+            <div className="mt-3 h-1 overflow-hidden rounded-full bg-slate-100">
               <div
                 className={`h-full rounded-full ${s.barClass}`}
                 style={{ width: `${Math.min(s.bar, 100)}%` }}
@@ -670,10 +670,10 @@ export default function CampaignPage({
 
       {/* A/B comparison */}
       {abStats && (
-        <div className="mt-4 rounded-2xl border border-neutral-800/80 bg-neutral-900/60 p-5">
+        <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex items-center gap-2">
-            <FlaskConical size={15} className="text-sky-400" />
-            <h2 className="text-sm font-semibold">A/B results</h2>
+            <FlaskConical size={15} className="text-sky-500" />
+            <h2 className="text-sm font-semibold text-slate-900">A/B results</h2>
           </div>
           <div className="mt-3 grid grid-cols-2 gap-3">
             {(["A", "B"] as const).map((v) => {
@@ -683,22 +683,22 @@ export default function CampaignPage({
               return (
                 <div
                   key={v}
-                  className="rounded-xl border border-neutral-800 bg-neutral-950/50 p-4"
+                  className="rounded-xl border border-slate-200 bg-slate-50 p-4"
                 >
-                  <p className="text-xs font-semibold uppercase tracking-wider text-neutral-400">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                     Variant {v}
-                    <span className="ml-2 font-normal normal-case tracking-normal text-neutral-600">
+                    <span className="ml-2 font-normal normal-case tracking-normal text-slate-400">
                       {s.total} recipients
                     </span>
                   </p>
                   <div className="mt-3 grid grid-cols-2 gap-2 text-center">
                     <div>
-                      <p className="text-lg font-semibold">{s.reached}</p>
-                      <p className="text-xs text-neutral-500">reached</p>
+                      <p className="text-lg font-semibold text-slate-900">{s.reached}</p>
+                      <p className="text-xs text-slate-500">reached</p>
                     </div>
                     <div>
-                      <p className="text-lg font-semibold">{rate(s.replied)}</p>
-                      <p className="text-xs text-neutral-500">replied</p>
+                      <p className="text-lg font-semibold text-slate-900">{rate(s.replied)}</p>
+                      <p className="text-xs text-slate-500">replied</p>
                     </div>
                   </div>
                 </div>
@@ -709,29 +709,29 @@ export default function CampaignPage({
       )}
 
       {/* Follow-up sequence */}
-      <div className="mt-4 rounded-2xl border border-neutral-800/80 bg-neutral-900/60 p-5">
+      <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <ListPlus size={15} className="text-sky-400" />
-            <h2 className="text-sm font-semibold">Follow-up sequence</h2>
+            <ListPlus size={15} className="text-sky-500" />
+            <h2 className="text-sm font-semibold text-slate-900">Follow-up sequence</h2>
           </div>
           {!showAddStep && steps.length < 5 && (
             <button
               onClick={() => setShowAddStep(true)}
-              className="rounded-lg border border-neutral-800 px-3 py-1.5 text-xs text-neutral-300 transition hover:bg-neutral-900"
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-700 transition hover:bg-slate-50"
             >
               Add step
             </button>
           )}
         </div>
-        <p className="mt-1 text-xs text-neutral-500">
+        <p className="mt-1 text-xs text-slate-500">
           Follow-ups go to recipients who haven&apos;t replied, bounced, or
           unsubscribed, threaded under the original email. Start the subject
           with &quot;Re:&quot; so they thread on the recipient&apos;s side too.
         </p>
 
         {steps.length === 0 && !showAddStep && (
-          <p className="mt-4 text-sm text-neutral-600">
+          <p className="mt-4 text-sm text-slate-400">
             No follow-ups yet. Most replies come from follow-up 1 and 2.
           </p>
         )}
@@ -741,24 +741,24 @@ export default function CampaignPage({
             {steps.map((s) => (
               <li
                 key={s.id}
-                className="flex items-start justify-between gap-3 rounded-xl border border-neutral-800 bg-neutral-950/50 p-3.5"
+                className="flex items-start justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3.5"
               >
                 <div className="min-w-0">
-                  <p className="text-xs font-medium text-sky-300">
+                  <p className="text-xs font-medium text-sky-700">
                     Step {s.stepNumber} · {s.delayDays} day
                     {s.delayDays === 1 ? "" : "s"} after the previous email
                   </p>
-                  <p className="mt-1 truncate text-sm text-neutral-200">
+                  <p className="mt-1 truncate text-sm text-slate-800">
                     {s.subjectTemplate}
                   </p>
-                  <p className="mt-0.5 line-clamp-2 text-xs text-neutral-500">
+                  <p className="mt-0.5 line-clamp-2 text-xs text-slate-500">
                     {s.bodyTemplate}
                   </p>
                 </div>
                 <button
                   onClick={() => removeStep(s.id)}
                   title="Remove step"
-                  className="shrink-0 rounded-lg p-1.5 text-neutral-600 transition hover:bg-red-500/10 hover:text-red-400"
+                  className="shrink-0 rounded-lg p-1.5 text-slate-400 transition hover:bg-red-50 hover:text-red-600"
                 >
                   <Trash2 size={14} />
                 </button>
@@ -768,18 +768,18 @@ export default function CampaignPage({
         )}
 
         {showAddStep && (
-          <div className="mt-4 space-y-3 rounded-xl border border-neutral-800 bg-neutral-950/50 p-4">
+          <div className="mt-4 space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
             <div className="flex items-center gap-2">
-              <label className="text-xs text-neutral-400">Send</label>
+              <label className="text-xs text-slate-500">Send</label>
               <input
                 type="number"
                 min={1}
                 max={30}
                 value={stepDelay}
                 onChange={(e) => setStepDelay(Number(e.target.value))}
-                className="w-16 rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1.5 text-sm text-neutral-100 outline-none focus:border-sky-500"
+                className="w-16 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30"
               />
-              <label className="text-xs text-neutral-400">
+              <label className="text-xs text-slate-500">
                 days after the previous email
               </label>
             </div>
@@ -787,18 +787,18 @@ export default function CampaignPage({
               placeholder="Subject, e.g. Re: {{Subject}}"
               value={stepSubject}
               onChange={(e) => setStepSubject(e.target.value)}
-              className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder-neutral-600 outline-none focus:border-sky-500"
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30"
             />
             <textarea
               placeholder={"Hi {{Name}}, just floating this back up..."}
               value={stepBody}
               onChange={(e) => setStepBody(e.target.value)}
-              className="min-h-24 w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 font-mono text-[13px] text-neutral-100 placeholder-neutral-600 outline-none focus:border-sky-500"
+              className="min-h-24 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-mono text-[13px] text-slate-900 placeholder:text-slate-400 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30"
             />
             <div className="flex justify-end gap-2">
               <button
                 onClick={() => setShowAddStep(false)}
-                className="rounded-lg border border-neutral-800 px-3 py-1.5 text-xs text-neutral-400 transition hover:bg-neutral-900"
+                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-700 transition hover:bg-slate-50"
               >
                 Cancel
               </button>
@@ -820,8 +820,8 @@ export default function CampaignPage({
             onClick={() => setFilter(null)}
             className={`rounded-full px-3 py-1 text-xs transition ${
               filter === null
-                ? "bg-neutral-200 font-medium text-neutral-900"
-                : "border border-neutral-800 text-neutral-400 hover:bg-neutral-900"
+                ? "bg-slate-900 font-medium text-white"
+                : "border border-slate-300 bg-white text-slate-500 hover:bg-slate-50"
             }`}
           >
             All ({recipients.length})
@@ -832,15 +832,15 @@ export default function CampaignPage({
               onClick={() => setFilter(filter === status ? null : status)}
               className={`rounded-full px-3 py-1 text-xs transition ${
                 filter === status
-                  ? "bg-neutral-200 font-medium text-neutral-900"
-                  : "border border-neutral-800 text-neutral-400 hover:bg-neutral-900"
+                  ? "bg-slate-900 font-medium text-white"
+                  : "border border-slate-300 bg-white text-slate-500 hover:bg-slate-50"
               }`}
             >
               {status} ({count})
             </button>
           ))}
         </div>
-        <span className="inline-flex items-center gap-1.5 text-xs text-neutral-600">
+        <span className="inline-flex items-center gap-1.5 text-xs text-slate-400">
           <span className="relative flex h-1.5 w-1.5">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
             <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
@@ -849,9 +849,9 @@ export default function CampaignPage({
         </span>
       </div>
 
-      <div className="mt-3 overflow-x-auto rounded-2xl border border-neutral-800/80">
+      <div className="mt-3 overflow-x-auto rounded-2xl border border-slate-200 shadow-sm">
         <table className="w-full text-left text-sm">
-          <thead className="bg-neutral-900/80 text-xs text-neutral-400">
+          <thead className="bg-slate-50 text-xs text-slate-500">
             <tr>
               <th className="px-4 py-3 font-medium">Recipient</th>
               <th className="px-4 py-3 font-medium">Status</th>
@@ -872,22 +872,22 @@ export default function CampaignPage({
             {visibleRecipients.map((r) => (
               <tr
                 key={r.id}
-                className="border-t border-neutral-800/60 transition hover:bg-neutral-900/40"
+                className="border-t border-slate-200 transition hover:bg-slate-50"
               >
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-3">
-                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-neutral-800 text-[11px] font-medium text-neutral-300">
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[11px] font-medium text-slate-700">
                       {(r.name ?? r.email).charAt(0).toUpperCase()}
                     </span>
                     <div className="min-w-0">
-                      <p className="truncate text-neutral-200">{r.email}</p>
+                      <p className="truncate text-slate-900">{r.email}</p>
                       {r.name && (
-                        <p className="truncate text-xs text-neutral-500">
+                        <p className="truncate text-xs text-slate-500">
                           {r.name}
                         </p>
                       )}
                       {r.error && (
-                        <p className="mt-0.5 text-xs text-red-400">{r.error}</p>
+                        <p className="mt-0.5 text-xs text-red-600">{r.error}</p>
                       )}
                     </div>
                   </div>
@@ -896,14 +896,14 @@ export default function CampaignPage({
                   <StatusChip status={r.status} />
                 </td>
                 {campaign.hasVariantB && (
-                  <td className="hidden px-4 py-3 text-xs text-neutral-400 sm:table-cell">
+                  <td className="hidden px-4 py-3 text-xs text-slate-500 sm:table-cell">
                     {r.variant}
                   </td>
                 )}
-                <td className="hidden px-4 py-3 text-xs text-neutral-400 sm:table-cell">
+                <td className="hidden px-4 py-3 text-xs text-slate-500 sm:table-cell">
                   {r.sequenceStep > 0 ? `+${r.sequenceStep}` : "-"}
                 </td>
-                <td className="hidden px-4 py-3 text-xs text-neutral-400 md:table-cell">
+                <td className="hidden px-4 py-3 text-xs text-slate-500 md:table-cell">
                   {r.repliedAt ? new Date(r.repliedAt).toLocaleString() : "-"}
                 </td>
               </tr>
@@ -912,7 +912,7 @@ export default function CampaignPage({
               <tr>
                 <td
                   colSpan={campaign.hasVariantB ? 5 : 4}
-                  className="px-4 py-10 text-center text-sm text-neutral-500"
+                  className="px-4 py-10 text-center text-sm text-slate-500"
                 >
                   No recipients match this filter.
                 </td>
