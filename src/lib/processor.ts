@@ -305,8 +305,11 @@ export async function processUser(userId: string): Promise<ProcessResult> {
         if (suppressedEmails.has(r.email.toLowerCase())) continue;
         const nextStep = steps.find((s) => s.stepNumber === r.sequenceStep + 1);
         if (!nextStep) continue;
-        const dueAt =
-          r.lastEmailAt!.getTime() + nextStep.delayDays * 24 * 60 * 60 * 1000;
+        // Absolute schedule (same instant for everyone) overrides the relative
+        // "N days after the previous email" delay.
+        const dueAt = nextStep.scheduledAt
+          ? nextStep.scheduledAt.getTime()
+          : r.lastEmailAt!.getTime() + nextStep.delayDays * 24 * 60 * 60 * 1000;
         if (dueAt > now) continue;
         due.push({ campaign, step: nextStep, recipient: r });
       }

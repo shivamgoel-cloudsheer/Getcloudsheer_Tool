@@ -216,6 +216,9 @@ export const sequenceSteps = pgTable(
       .references(() => campaigns.id, { onDelete: "cascade" }),
     stepNumber: integer("step_number").notNull(), // 1, 2, 3...
     delayDays: integer("delay_days").notNull(), // days after the previous email
+    // Optional absolute send time. When set, this step is due at this instant
+    // for everyone (overrides delayDays); when null, delayDays is used.
+    scheduledAt: timestamp("scheduled_at"),
     subjectTemplate: text("subject_template").notNull(),
     bodyTemplate: text("body_template").notNull(),
     createdAt: timestamp("created_at").notNull().defaultNow(),
