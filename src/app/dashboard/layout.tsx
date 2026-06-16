@@ -28,10 +28,10 @@ export default async function DashboardLayout({
       <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/80 backdrop-blur">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-3.5">
           <div className="flex items-center gap-5">
-            <Link href="/dashboard" className="flex items-center gap-2.5">
+            <Link href="/dashboard" className="flex items-center gap-2">
               <Logo />
-              <span className="text-sm font-semibold tracking-wide text-slate-900">
-                Cloudsheer <span className="text-indigo-600">Outreach</span>
+              <span className="text-sm font-medium text-slate-400">
+                Outreach
               </span>
             </Link>
             <nav className="hidden items-center gap-4 text-sm sm:flex">

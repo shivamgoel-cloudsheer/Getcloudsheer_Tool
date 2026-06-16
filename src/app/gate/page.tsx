@@ -41,7 +41,7 @@ export default async function GatePage({
           <Logo size="lg" />
         </div>
         <h1 className="mt-5 text-lg font-semibold text-slate-900">
-          Cloudsheer Outreach
+          Outreach
         </h1>
         <p className="mt-1.5 text-sm text-slate-500">
           This tool is for the Cloudsheer team. Enter the access password.

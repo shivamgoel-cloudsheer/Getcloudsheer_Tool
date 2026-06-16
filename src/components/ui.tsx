@@ -1,14 +1,18 @@
-import { Send } from "lucide-react";
+import Image from "next/image";
 
+// Full Cloudsheer brand lockup (cloud mark + wordmark). Sized by height; width
+// scales with the 762x252 source aspect ratio.
 export function Logo({ size = "md" }: { size?: "md" | "lg" }) {
-  const box = size === "lg" ? "h-12 w-12 rounded-2xl" : "h-8 w-8 rounded-xl";
-  const icon = size === "lg" ? 22 : 15;
+  const cls = size === "lg" ? "h-11 w-auto" : "h-7 w-auto";
   return (
-    <span
-      className={`flex ${box} items-center justify-center bg-linear-to-br from-sky-500 to-indigo-600 text-white shadow-lg shadow-indigo-500/25`}
-    >
-      <Send size={icon} strokeWidth={2.25} className="-translate-x-px translate-y-px" />
-    </span>
+    <Image
+      src="/logo.png"
+      alt="Cloudsheer"
+      width={762}
+      height={252}
+      priority
+      className={cls}
+    />
   );
 }
 
