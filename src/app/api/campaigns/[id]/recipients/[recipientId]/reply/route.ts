@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { campaigns, recipients } from "@/db/schema";
 import { isAdminEmail } from "@/lib/admin";
 import { getAccessTokenForSender } from "@/lib/google";
-import { fetchMessageBody } from "@/lib/gmail";
+import { fetchMessageBody, findRepliesFrom } from "@/lib/gmail";
 import { DEFAULT_FROM_ADDRESS, emailFromAddress } from "@/lib/senders";
 
 // Loads the full body of a recipient's latest reply, on demand. The reply
@@ -35,19 +35,49 @@ export async function GET(
   }
 
   const [recipient] = await db
-    .select({ replyMessageId: recipients.replyMessageId })
+    .select({
+      email: recipients.email,
+      replyMessageId: recipients.replyMessageId,
+    })
     .from(recipients)
     .where(
       and(eq(recipients.id, recipientId), eq(recipients.campaignId, id))
     );
-  if (!recipient?.replyMessageId) {
-    return Response.json({ error: "No reply on file" }, { status: 404 });
+  if (!recipient) {
+    return Response.json({ error: "Recipient not found" }, { status: 404 });
   }
 
   const sender = emailFromAddress(campaign.fromAddress ?? DEFAULT_FROM_ADDRESS);
   try {
     const token = await getAccessTokenForSender(sender);
-    const message = await fetchMessageBody(token, recipient.replyMessageId);
+
+    let messageId = recipient.replyMessageId;
+    // Replies detected before content capture have no stored id - find the
+    // message live in the sender's inbox and backfill it for next time.
+    if (!messageId) {
+      const found = await findRepliesFrom(token, [recipient.email]);
+      const info = found.get(recipient.email.toLowerCase());
+      if (!info) {
+        return Response.json(
+          {
+            error:
+              "Couldn't find the reply in the mailbox - it may be older than 30 days or in a different inbox.",
+          },
+          { status: 404 }
+        );
+      }
+      messageId = info.messageId;
+      await db
+        .update(recipients)
+        .set({
+          replyMessageId: info.messageId,
+          replySnippet: info.snippet || null,
+          replySubject: info.subject || null,
+        })
+        .where(eq(recipients.id, recipientId));
+    }
+
+    const message = await fetchMessageBody(token, messageId);
     return Response.json(message);
   } catch (e) {
     return Response.json(
