@@ -31,7 +31,7 @@ export default async function DashboardLayout({
             <Link href="/dashboard" className="flex items-center gap-2.5">
               <Logo />
               <span className="text-sm font-semibold tracking-wide text-slate-900">
-                CloudSheer <span className="text-indigo-600">Outreach</span>
+                Cloudsheer <span className="text-indigo-600">Outreach</span>
               </span>
             </Link>
             <nav className="hidden items-center gap-4 text-sm sm:flex">

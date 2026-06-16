@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "CloudSheer Outreach",
+  title: "Cloudsheer Outreach",
   description:
     "Email outreach campaigns from Google Sheets with open and click tracking",
 };

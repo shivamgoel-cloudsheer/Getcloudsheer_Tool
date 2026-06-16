@@ -42,7 +42,7 @@ export default async function Home() {
         <div className="flex flex-col items-center text-center">
           <Logo size="lg" />
           <p className="mt-5 text-xs font-semibold uppercase tracking-[0.2em] text-indigo-600">
-            CloudSheer Outreach
+            Cloudsheer Outreach
           </p>
           <h1 className="mt-3 max-w-xl text-balance text-4xl font-semibold leading-tight text-slate-900 sm:text-5xl">
             Your Google Sheet, turned into a personalized campaign
