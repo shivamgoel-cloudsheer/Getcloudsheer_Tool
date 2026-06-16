@@ -176,8 +176,9 @@ export async function processUser(userId: string): Promise<ProcessResult> {
       const replies = await findRepliesFrom(token, uniqueEmails);
 
       for (const r of group) {
-        const repliedAt = replies.get(r.email.toLowerCase());
-        if (!repliedAt) continue;
+        const reply = replies.get(r.email.toLowerCase());
+        if (!reply) continue;
+        const repliedAt = reply.at;
         // A queued follow-up (scheduled with a prior step already sent): any
         // reply seen now is new - earlier replies would have been caught
         // while the recipient was still in a sent state - so cancel it.
@@ -191,6 +192,7 @@ export async function processUser(userId: string): Promise<ProcessResult> {
           continue;
         }
         // Scheduling is DB-backed: clearing scheduledFor IS the cancellation.
+        // Capture the reply content so it can be read in-app.
         await db
           .update(recipients)
           .set({
@@ -198,6 +200,9 @@ export async function processUser(userId: string): Promise<ProcessResult> {
             status: "replied",
             scheduledFor: null,
             dispatchClaimedAt: null,
+            replySnippet: reply.snippet || null,
+            replySubject: reply.subject || null,
+            replyMessageId: reply.messageId || null,
           })
           .where(eq(recipients.id, r.id));
         result.repliesFound++;

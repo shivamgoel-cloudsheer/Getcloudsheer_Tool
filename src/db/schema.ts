@@ -177,6 +177,11 @@ export const recipients = pgTable(
     sequenceStep: integer("sequence_step").notNull().default(0),
     lastEmailAt: timestamp("last_email_at"),
     repliedAt: timestamp("replied_at"),
+    // Latest reply content, captured during reply detection so it can be read
+    // in-app. Full body is fetched on demand via the Gmail message id.
+    replySnippet: text("reply_snippet"),
+    replySubject: text("reply_subject"),
+    replyMessageId: text("reply_message_id"),
     openedAt: timestamp("opened_at"),
     clickedAt: timestamp("clicked_at"),
     error: text("error"),

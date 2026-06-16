@@ -48,6 +48,8 @@ export async function GET(
         openedAt: recipients.openedAt,
         clickedAt: recipients.clickedAt,
         repliedAt: recipients.repliedAt,
+        replySnippet: recipients.replySnippet,
+        replySubject: recipients.replySubject,
         error: recipients.error,
       })
       .from(recipients)

@@ -68,9 +68,19 @@ type CampaignStatusResponse = {
     openedAt: string | null;
     clickedAt: string | null;
     repliedAt: string | null;
+    replySnippet: string | null;
+    replySubject: string | null;
     error: string | null;
   }[];
   lastReplyCheckAt: string | null;
+};
+
+type ReplyView = {
+  recipientId: string;
+  email: string;
+  loading: boolean;
+  error?: string;
+  data?: { from: string; subject: string; date: string; body: string };
 };
 
 const ENGAGED = ["delivered", "opened", "clicked", "replied"];
@@ -99,6 +109,7 @@ export default function CampaignPage({
   // "" = use my (browser) timezone; otherwise a chosen country's IANA zone.
   const [windowTz, setWindowTz] = useState("");
   const [filter, setFilter] = useState<string | null>(null);
+  const [replyView, setReplyView] = useState<ReplyView | null>(null);
   const [showAddStep, setShowAddStep] = useState(false);
   const [stepDelay, setStepDelay] = useState(3);
   const [stepSubject, setStepSubject] = useState("");
@@ -390,6 +401,27 @@ export default function CampaignPage({
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to add step");
+    }
+  }
+
+  // Open the reply viewer and load the full body from Gmail on demand.
+  async function viewReply(recipientId: string, email: string) {
+    setReplyView({ recipientId, email, loading: true });
+    try {
+      const res = await fetch(
+        `/api/campaigns/${id}/recipients/${recipientId}/reply`,
+        { cache: "no-store" }
+      );
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Failed to load reply");
+      setReplyView({ recipientId, email, loading: false, data: json });
+    } catch (e) {
+      setReplyView({
+        recipientId,
+        email,
+        loading: false,
+        error: e instanceof Error ? e.message : "Failed to load reply",
+      });
     }
   }
 
@@ -1286,6 +1318,12 @@ export default function CampaignPage({
                       {r.error && (
                         <p className="mt-0.5 text-xs text-red-600">{r.error}</p>
                       )}
+                      {r.status === "replied" && r.replySnippet && (
+                        <p className="mt-1 line-clamp-2 max-w-md text-xs text-teal-700">
+                          <span className="font-medium">Reply: </span>
+                          {r.replySnippet}
+                        </p>
+                      )}
                     </div>
                   </div>
                 </td>
@@ -1323,6 +1361,16 @@ export default function CampaignPage({
                         <Trash2 size={14} />
                       </button>
                     </div>
+                  ) : r.status === "replied" ? (
+                    <div className="flex justify-end">
+                      <button
+                        onClick={() => viewReply(r.id, r.email)}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-teal-200 bg-teal-50 px-2.5 py-1 text-xs font-medium text-teal-700 transition hover:bg-teal-100"
+                      >
+                        <MessageSquareReply size={13} />
+                        View reply
+                      </button>
+                    </div>
                   ) : (
                     <span className="block text-right text-slate-300">-</span>
                   )}
@@ -1342,6 +1390,62 @@ export default function CampaignPage({
           </tbody>
         </table>
       </div>
+
+      {replyView && (
+        <div
+          className="fixed inset-0 z-30 flex items-center justify-center bg-slate-900/30 p-4"
+          onClick={() => setReplyView(null)}
+        >
+          <div
+            className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="flex items-center gap-1.5 text-sm font-semibold text-slate-900">
+                  <MessageSquareReply size={15} className="text-teal-600" />
+                  Reply
+                </p>
+                <p className="truncate text-xs text-slate-500">
+                  {replyView.email}
+                </p>
+              </div>
+              <button
+                onClick={() => setReplyView(null)}
+                className="rounded-lg p-1.5 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+                title="Close"
+              >
+                <X size={14} />
+              </button>
+            </div>
+            <div className="mt-4">
+              {replyView.loading ? (
+                <div className="flex items-center gap-2 py-10 text-sm text-slate-500">
+                  <Loader2 size={15} className="animate-spin" />
+                  Loading reply
+                </div>
+              ) : replyView.error ? (
+                <p className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                  {replyView.error}
+                </p>
+              ) : replyView.data ? (
+                <div>
+                  <p className="text-sm font-medium text-slate-800">
+                    {replyView.data.subject || "(no subject)"}
+                  </p>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    {replyView.data.from}
+                    {replyView.data.date ? ` · ${replyView.data.date}` : ""}
+                  </p>
+                  <div className="mt-3 max-h-[55vh] overflow-auto whitespace-pre-wrap rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-800">
+                    {replyView.data.body || "(empty message)"}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
