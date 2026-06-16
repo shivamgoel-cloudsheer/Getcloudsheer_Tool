@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { StatusChip } from "@/components/ui";
 import { COUNTRY_OPTIONS } from "@/lib/geo";
+import { zonedTimeToUtc } from "@/lib/timezone";
 
 type Step = {
   id: string;
@@ -104,6 +105,8 @@ export default function CampaignPage({
   // "days" = N days after previous email; "date" = an exact date/time.
   const [stepMode, setStepMode] = useState<"days" | "date">("days");
   const [stepScheduledAt, setStepScheduledAt] = useState("");
+  // "" = my (browser) timezone; otherwise a chosen country's IANA zone.
+  const [stepTz, setStepTz] = useState("");
   // Optional sheet re-upload to refresh recipients' personalization data.
   const [stepSheetUrl, setStepSheetUrl] = useState("");
   const [stepSheetTab, setStepSheetTab] = useState<string | null>(null);
@@ -339,11 +342,20 @@ export default function CampaignPage({
     setStepDelay(3);
     setStepMode("days");
     setStepScheduledAt("");
+    setStepTz("");
     setStepSheetUrl("");
     setStepSheetTab(null);
     setStepSheetCols(null);
     setStepSelectedCols([]);
     setStepSheetMsg(null);
+  }
+
+  // The follow-up date in the chosen timezone, as a UTC ISO string. With "my
+  // timezone" the browser-local datetime is used directly.
+  function stepScheduledAtIso(): string {
+    if (!stepTz) return new Date(stepScheduledAt).toISOString();
+    const [date, time] = stepScheduledAt.split("T");
+    return (zonedTimeToUtc(date, time, stepTz) ?? new Date(stepScheduledAt)).toISOString();
   }
 
   async function addStep() {
@@ -357,7 +369,7 @@ export default function CampaignPage({
           subjectTemplate: stepSubject,
           bodyTemplate: stepBody,
           ...(stepMode === "date" && stepScheduledAt
-            ? { scheduledAt: new Date(stepScheduledAt).toISOString() }
+            ? { scheduledAt: stepScheduledAtIso() }
             : {}),
           ...(stepSheetUrl.trim() && stepSheetCols
             ? {
@@ -1014,7 +1026,7 @@ export default function CampaignPage({
                   </label>
                 </div>
               ) : (
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <label className="text-xs text-slate-500">Send on</label>
                   <input
                     type="datetime-local"
@@ -1022,6 +1034,18 @@ export default function CampaignPage({
                     onChange={(e) => setStepScheduledAt(e.target.value)}
                     className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30"
                   />
+                  <select
+                    value={stepTz}
+                    onChange={(e) => setStepTz(e.target.value)}
+                    className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30"
+                  >
+                    <option value="">My timezone</option>
+                    {COUNTRY_OPTIONS.map((c) => (
+                      <option key={c.timeZone} value={c.timeZone}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               )}
             </div>
