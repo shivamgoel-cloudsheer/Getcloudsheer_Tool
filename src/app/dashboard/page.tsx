@@ -13,17 +13,20 @@ import { auth } from "@/auth";
 import { db } from "@/db";
 import { campaigns, recipients } from "@/db/schema";
 import { StatusChip } from "@/components/ui";
+import { isAdminEmail } from "@/lib/admin";
 
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
   const session = await auth();
   const userId = session!.user.id;
+  // Managers (ADMIN_EMAILS) see every campaign; everyone else sees their own.
+  const admin = isAdminEmail(session!.user.email);
 
   const list = await db
     .select()
     .from(campaigns)
-    .where(eq(campaigns.userId, userId))
+    .where(admin ? undefined : eq(campaigns.userId, userId))
     .orderBy(desc(campaigns.createdAt));
 
   type Stats = {

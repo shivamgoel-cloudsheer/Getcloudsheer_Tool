@@ -24,6 +24,7 @@ import {
   hasSendScope,
 } from "@/lib/google";
 import { dispatchDue } from "@/lib/dispatch";
+import { isAdminEmail } from "@/lib/admin";
 
 export const maxDuration = 300;
 
@@ -136,12 +137,18 @@ export async function POST(
     base = at;
   }
 
+  // Managers can run anyone's campaign; everyone else only their own.
+  const admin = isAdminEmail(session.user.email);
+  const ownsClause = admin
+    ? []
+    : [eq(campaigns.userId, session.user.id)];
+
   // Sends go out through the sender's own Gmail, so the sender mailbox must
   // be linked with send permission before anything is scheduled.
   const [precheck] = await db
     .select({ fromAddress: campaigns.fromAddress })
     .from(campaigns)
-    .where(and(eq(campaigns.id, id), eq(campaigns.userId, session.user.id)));
+    .where(and(eq(campaigns.id, id), ...ownsClause));
   if (!precheck) {
     return Response.json({ error: "Campaign not found" }, { status: 404 });
   }
@@ -180,7 +187,7 @@ export async function POST(
     .where(
       and(
         eq(campaigns.id, id),
-        eq(campaigns.userId, session.user.id),
+        ...ownsClause,
         inArray(campaigns.status, ["draft", "failed"])
       )
     )

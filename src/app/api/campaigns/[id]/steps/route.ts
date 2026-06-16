@@ -3,6 +3,7 @@ import { z } from "zod";
 import { auth } from "@/auth";
 import { db } from "@/db";
 import { campaigns, sequenceSteps } from "@/db/schema";
+import { isAdminEmail } from "@/lib/admin";
 
 const addSchema = z.object({
   delayDays: z.number().int().min(1).max(30),
@@ -12,11 +13,16 @@ const addSchema = z.object({
 
 const removeSchema = z.object({ stepId: z.string().uuid() });
 
-async function ownedCampaign(id: string, userId: string) {
+// Managers (admin) may edit any campaign's steps; everyone else only their own.
+async function ownedCampaign(id: string, userId: string, admin: boolean) {
   const [campaign] = await db
     .select()
     .from(campaigns)
-    .where(and(eq(campaigns.id, id), eq(campaigns.userId, userId)));
+    .where(
+      admin
+        ? eq(campaigns.id, id)
+        : and(eq(campaigns.id, id), eq(campaigns.userId, userId))
+    );
   return campaign ?? null;
 }
 
@@ -30,7 +36,11 @@ export async function POST(
   }
 
   const { id } = await params;
-  const campaign = await ownedCampaign(id, session.user.id);
+  const campaign = await ownedCampaign(
+    id,
+    session.user.id,
+    isAdminEmail(session.user.email)
+  );
   if (!campaign) {
     return Response.json({ error: "Campaign not found" }, { status: 404 });
   }
@@ -80,7 +90,11 @@ export async function DELETE(
   }
 
   const { id } = await params;
-  const campaign = await ownedCampaign(id, session.user.id);
+  const campaign = await ownedCampaign(
+    id,
+    session.user.id,
+    isAdminEmail(session.user.email)
+  );
   if (!campaign) {
     return Response.json({ error: "Campaign not found" }, { status: 404 });
   }

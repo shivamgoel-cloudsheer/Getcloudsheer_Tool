@@ -4,6 +4,7 @@ import { auth } from "@/auth";
 import { db } from "@/db";
 import { campaigns, type StoredStaggerConfig } from "@/db/schema";
 import { isValidTimeZone } from "@/lib/timezone";
+import { isAdminEmail } from "@/lib/admin";
 
 const MAX_DAILY_CAP = 100;
 
@@ -76,14 +77,15 @@ export async function PATCH(
   }
 
   // Only a draft/failed campaign can have its plan edited; sending/sent/
-  // scheduled ones are locked.
+  // scheduled ones are locked. Managers can edit anyone's; others only own.
+  const admin = isAdminEmail(session.user.email);
   const [updated] = await db
     .update(campaigns)
     .set(update)
     .where(
       and(
         eq(campaigns.id, id),
-        eq(campaigns.userId, session.user.id),
+        ...(admin ? [] : [eq(campaigns.userId, session.user.id)]),
         inArray(campaigns.status, ["draft", "failed"])
       )
     )
@@ -111,10 +113,17 @@ export async function DELETE(
   const { id } = await params;
 
   // Scheduling is DB-backed, so deleting the campaign cascades away any
-  // still-queued rows and nothing remote needs cancelling first.
+  // still-queued rows and nothing remote needs cancelling first. Managers can
+  // delete anyone's campaign; everyone else only their own.
+  const admin = isAdminEmail(session.user.email);
   const deleted = await db
     .delete(campaigns)
-    .where(and(eq(campaigns.id, id), eq(campaigns.userId, session.user.id)))
+    .where(
+      and(
+        eq(campaigns.id, id),
+        ...(admin ? [] : [eq(campaigns.userId, session.user.id)])
+      )
+    )
     .returning({ id: campaigns.id });
 
   if (deleted.length === 0) {
