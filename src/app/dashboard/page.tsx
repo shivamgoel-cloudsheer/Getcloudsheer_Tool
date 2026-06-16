@@ -11,9 +11,10 @@ import {
 } from "lucide-react";
 import { auth } from "@/auth";
 import { db } from "@/db";
-import { campaigns, recipients } from "@/db/schema";
+import { campaigns, recipients, users } from "@/db/schema";
 import { StatusChip } from "@/components/ui";
 import { isAdminEmail } from "@/lib/admin";
+import { getSender } from "@/lib/senders";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +29,25 @@ export default async function DashboardPage() {
     .from(campaigns)
     .where(admin ? undefined : eq(campaigns.userId, userId))
     .orderBy(desc(campaigns.createdAt));
+
+  // In manager view, label each campaign with who created it. Prefer the
+  // friendly sender name (Tushar/Bharat/...), then the Google name, then email.
+  const ownerLabelById = new Map<string, string>();
+  if (admin && list.length > 0) {
+    const ownerIds = [...new Set(list.map((c) => c.userId))];
+    const owners = await db
+      .select({ id: users.id, name: users.name, email: users.email })
+      .from(users)
+      .where(inArray(users.id, ownerIds));
+    for (const o of owners) {
+      const label =
+        (o.email ? getSender(o.email)?.name : null) ??
+        o.name ??
+        o.email ??
+        "Unknown";
+      ownerLabelById.set(o.id, label);
+    }
+  }
 
   type Stats = {
     replied: number;
@@ -168,9 +188,14 @@ export default async function DashboardPage() {
                 >
                   <div className="flex items-center justify-between gap-4">
                     <div className="min-w-0">
-                      <div className="flex items-center gap-3">
+                      <div className="flex flex-wrap items-center gap-2.5">
                         <p className="truncate font-medium text-slate-900">{campaign.name}</p>
                         <StatusChip status={campaign.status} />
+                        {admin && ownerLabelById.get(campaign.userId) && (
+                          <span className="inline-flex items-center rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-medium text-indigo-700 ring-1 ring-inset ring-indigo-200">
+                            by {ownerLabelById.get(campaign.userId)}
+                          </span>
+                        )}
                       </div>
                       <p className="mt-1.5 flex items-center gap-1.5 text-xs text-slate-500">
                         {campaign.status === "scheduled" &&
