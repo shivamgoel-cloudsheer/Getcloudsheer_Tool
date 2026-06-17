@@ -10,6 +10,7 @@ import {
 } from "@/db/schema";
 import { findRepliesFrom } from "@/lib/gmail";
 import { findBouncedAddresses } from "@/lib/gmailBounce";
+import { classifyReply } from "@/lib/classifyReply";
 import {
   getAccessTokenForSender,
   getSenderAccount,
@@ -192,7 +193,8 @@ export async function processUser(userId: string): Promise<ProcessResult> {
           continue;
         }
         // Scheduling is DB-backed: clearing scheduledFor IS the cancellation.
-        // Capture the reply content so it can be read in-app.
+        // Capture the reply content + AI category so it can be read/segmented.
+        const category = await classifyReply(reply.subject, reply.snippet);
         await db
           .update(recipients)
           .set({
@@ -203,6 +205,7 @@ export async function processUser(userId: string): Promise<ProcessResult> {
             replySnippet: reply.snippet || null,
             replySubject: reply.subject || null,
             replyMessageId: reply.messageId || null,
+            ...(category ? { replyCategory: category } : {}),
           })
           .where(eq(recipients.id, r.id));
         result.repliesFound++;

@@ -182,6 +182,9 @@ export const recipients = pgTable(
     replySnippet: text("reply_snippet"),
     replySubject: text("reply_subject"),
     replyMessageId: text("reply_message_id"),
+    // AI segmentation: positive | negative | out_of_office | neutral (null until
+    // classified). Set by Claude Haiku at detection, or manually overridden.
+    replyCategory: text("reply_category"),
     openedAt: timestamp("opened_at"),
     clickedAt: timestamp("clicked_at"),
     error: text("error"),

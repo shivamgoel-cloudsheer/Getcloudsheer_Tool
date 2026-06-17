@@ -70,6 +70,7 @@ type CampaignStatusResponse = {
     repliedAt: string | null;
     replySnippet: string | null;
     replySubject: string | null;
+    replyCategory: string | null;
     error: string | null;
   }[];
   lastReplyCheckAt: string | null;
@@ -84,6 +85,20 @@ type ReplyView = {
 };
 
 const ENGAGED = ["delivered", "opened", "clicked", "replied"];
+
+const REPLY_CATEGORY_ORDER = [
+  "positive",
+  "negative",
+  "out_of_office",
+  "neutral",
+] as const;
+
+const REPLY_CATEGORY_META: Record<string, { label: string; cls: string }> = {
+  positive: { label: "Positive", cls: "bg-emerald-50 text-emerald-700 ring-emerald-200" },
+  negative: { label: "Negative", cls: "bg-red-50 text-red-700 ring-red-200" },
+  out_of_office: { label: "Out of office", cls: "bg-amber-50 text-amber-700 ring-amber-200" },
+  neutral: { label: "Neutral", cls: "bg-slate-100 text-slate-600 ring-slate-200" },
+};
 
 export default function CampaignPage({
   params,
@@ -109,6 +124,7 @@ export default function CampaignPage({
   // "" = use my (browser) timezone; otherwise a chosen country's IANA zone.
   const [windowTz, setWindowTz] = useState("");
   const [filter, setFilter] = useState<string | null>(null);
+  const [catFilter, setCatFilter] = useState<string | null>(null);
   const [replyView, setReplyView] = useState<ReplyView | null>(null);
   const [showAddStep, setShowAddStep] = useState(false);
   const [stepDelay, setStepDelay] = useState(3);
@@ -425,6 +441,27 @@ export default function CampaignPage({
     }
   }
 
+  // Manually re-tag a reply's segmentation category.
+  async function setReplyCategory(recipientId: string, category: string) {
+    setError(null);
+    try {
+      const res = await fetch(`/api/campaigns/${id}/recipients`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          recipientIds: [recipientId],
+          action: "category",
+          category,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Failed to tag");
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to tag");
+    }
+  }
+
   // Act on scheduled recipients: pull back to pending, or delete the mail.
   async function recipientAction(ids: string[], action: "pending" | "delete") {
     if (
@@ -497,9 +534,31 @@ export default function CampaignPage({
 
   const visibleRecipients = useMemo(() => {
     if (!data) return [];
-    if (!filter) return data.recipients;
-    return data.recipients.filter((r) => r.status === filter);
-  }, [data, filter]);
+    let rows = data.recipients;
+    if (catFilter) {
+      return rows.filter(
+        (r) =>
+          r.status === "replied" &&
+          (catFilter === "unsorted"
+            ? !r.replyCategory
+            : r.replyCategory === catFilter)
+      );
+    }
+    if (filter) rows = rows.filter((r) => r.status === filter);
+    return rows;
+  }, [data, filter, catFilter]);
+
+  // Counts per reply category, for the segmentation filter pills.
+  const categoryCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const r of data?.recipients ?? []) {
+      if (r.status === "replied") {
+        const c = r.replyCategory ?? "unsorted";
+        counts[c] = (counts[c] ?? 0) + 1;
+      }
+    }
+    return counts;
+  }, [data]);
 
   const abStats = useMemo(() => {
     if (!data?.campaign.hasVariantB) return null;
@@ -1245,6 +1304,57 @@ export default function CampaignPage({
         </span>
       </div>
 
+      {Object.keys(categoryCounts).length > 0 && (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <span className="text-xs font-medium text-slate-500">
+            Reply types:
+          </span>
+          {REPLY_CATEGORY_ORDER.filter((c) => categoryCounts[c]).map((c) => {
+            const active = catFilter === c;
+            const meta = REPLY_CATEGORY_META[c];
+            return (
+              <button
+                key={c}
+                onClick={() => {
+                  setCatFilter(active ? null : c);
+                  setFilter(null);
+                }}
+                className={`rounded-full px-3 py-1 text-xs ring-1 ring-inset transition ${
+                  active
+                    ? "bg-slate-900 text-white ring-slate-900"
+                    : `${meta.cls} hover:brightness-95`
+                }`}
+              >
+                {meta.label} ({categoryCounts[c]})
+              </button>
+            );
+          })}
+          {categoryCounts["unsorted"] ? (
+            <button
+              onClick={() => {
+                setCatFilter(catFilter === "unsorted" ? null : "unsorted");
+                setFilter(null);
+              }}
+              className={`rounded-full px-3 py-1 text-xs ring-1 ring-inset transition ${
+                catFilter === "unsorted"
+                  ? "bg-slate-900 text-white ring-slate-900"
+                  : "bg-white text-slate-500 ring-slate-200 hover:bg-slate-50"
+              }`}
+            >
+              Unsorted ({categoryCounts["unsorted"]})
+            </button>
+          ) : null}
+          {catFilter && (
+            <button
+              onClick={() => setCatFilter(null)}
+              className="text-xs text-slate-500 underline hover:text-slate-700"
+            >
+              clear
+            </button>
+          )}
+        </div>
+      )}
+
       {(() => {
         const scheduledIds = visibleRecipients
           .filter((r) => r.status === "scheduled")
@@ -1328,7 +1438,20 @@ export default function CampaignPage({
                   </div>
                 </td>
                 <td className="px-4 py-3">
-                  <StatusChip status={r.status} />
+                  <div className="flex flex-col items-start gap-1">
+                    <StatusChip status={r.status} />
+                    {r.status === "replied" && r.replyCategory && (
+                      <span
+                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset ${
+                          REPLY_CATEGORY_META[r.replyCategory]?.cls ??
+                          "bg-slate-100 text-slate-600 ring-slate-200"
+                        }`}
+                      >
+                        {REPLY_CATEGORY_META[r.replyCategory]?.label ??
+                          r.replyCategory}
+                      </span>
+                    )}
+                  </div>
                 </td>
                 {campaign.hasVariantB && (
                   <td className="hidden px-4 py-3 text-xs text-slate-500 sm:table-cell">
@@ -1362,7 +1485,24 @@ export default function CampaignPage({
                       </button>
                     </div>
                   ) : r.status === "replied" ? (
-                    <div className="flex justify-end">
+                    <div className="flex items-center justify-end gap-1.5">
+                      <select
+                        value={r.replyCategory ?? ""}
+                        onChange={(e) =>
+                          setReplyCategory(r.id, e.target.value)
+                        }
+                        title="Set reply type"
+                        className="rounded-lg border border-slate-300 bg-white px-1.5 py-1 text-xs text-slate-700 outline-none focus:border-indigo-500"
+                      >
+                        <option value="" disabled>
+                          Tag...
+                        </option>
+                        {REPLY_CATEGORY_ORDER.map((c) => (
+                          <option key={c} value={c}>
+                            {REPLY_CATEGORY_META[c].label}
+                          </option>
+                        ))}
+                      </select>
                       <button
                         onClick={() => viewReply(r.id, r.email)}
                         className="inline-flex items-center gap-1.5 rounded-lg border border-teal-200 bg-teal-50 px-2.5 py-1 text-xs font-medium text-teal-700 transition hover:bg-teal-100"

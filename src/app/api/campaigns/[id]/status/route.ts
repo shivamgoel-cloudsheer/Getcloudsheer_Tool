@@ -50,6 +50,7 @@ export async function GET(
         repliedAt: recipients.repliedAt,
         replySnippet: recipients.replySnippet,
         replySubject: recipients.replySubject,
+        replyCategory: recipients.replyCategory,
         error: recipients.error,
       })
       .from(recipients)
