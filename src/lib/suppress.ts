@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { recipients } from "@/db/schema";
+import { recipients, unsubscribes } from "@/db/schema";
 
 /**
  * When an address lands on the suppression list (unsubscribe, bounce, or
@@ -22,4 +22,22 @@ export async function cancelScheduledForEmail(email: string): Promise<number> {
     .returning({ id: recipients.id });
 
   return res.length;
+}
+
+/**
+ * Adds an address to the suppression list (so it's never emailed again in any
+ * campaign) and cancels its still-queued sends. Used for unsubscribe replies,
+ * bounces, and complaints. Idempotent on the email.
+ */
+export async function suppressEmail(
+  email: string,
+  userId: string,
+  source: string
+): Promise<void> {
+  const normalized = email.trim().toLowerCase();
+  await db
+    .insert(unsubscribes)
+    .values({ email: normalized, userId, source })
+    .onConflictDoNothing();
+  await cancelScheduledForEmail(normalized);
 }

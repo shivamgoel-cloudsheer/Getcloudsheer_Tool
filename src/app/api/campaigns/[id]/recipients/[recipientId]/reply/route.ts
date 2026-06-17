@@ -6,6 +6,7 @@ import { isAdminEmail } from "@/lib/admin";
 import { getAccessTokenForSender } from "@/lib/google";
 import { fetchMessageBody, findRepliesFrom } from "@/lib/gmail";
 import { classifyReply } from "@/lib/classifyReply";
+import { suppressEmail } from "@/lib/suppress";
 import { DEFAULT_FROM_ADDRESS, emailFromAddress } from "@/lib/senders";
 
 // Loads the full body of a recipient's latest reply, on demand. The reply
@@ -23,7 +24,11 @@ export async function GET(
   const admin = isAdminEmail(session.user.email);
 
   const [campaign] = await db
-    .select({ id: campaigns.id, fromAddress: campaigns.fromAddress })
+    .select({
+      id: campaigns.id,
+      fromAddress: campaigns.fromAddress,
+      userId: campaigns.userId,
+    })
     .from(campaigns)
     .where(
       and(
@@ -78,6 +83,9 @@ export async function GET(
           ...(category ? { replyCategory: category } : {}),
         })
         .where(eq(recipients.id, recipientId));
+      if (category === "unsubscribe") {
+        await suppressEmail(recipient.email, campaign.userId, "reply");
+      }
     }
 
     const message = await fetchMessageBody(token, messageId);

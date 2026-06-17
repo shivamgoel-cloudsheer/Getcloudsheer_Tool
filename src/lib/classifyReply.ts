@@ -1,14 +1,22 @@
 import Anthropic from "@anthropic-ai/sdk";
 
 export type ReplyCategory =
-  | "positive"
-  | "negative"
+  | "interested"
+  | "meeting"
+  | "later"
+  | "not_interested"
+  | "unsubscribe"
+  | "wrong_person"
   | "out_of_office"
   | "neutral";
 
 export const REPLY_CATEGORIES: ReplyCategory[] = [
-  "positive",
-  "negative",
+  "interested",
+  "meeting",
+  "later",
+  "not_interested",
+  "unsubscribe",
+  "wrong_person",
   "out_of_office",
   "neutral",
 ];
@@ -42,12 +50,16 @@ export async function classifyReply(
       model: "claude-haiku-4-5",
       max_tokens: 16,
       system:
-        "You label replies to cold sales emails. Respond with EXACTLY one of these " +
-        "labels and nothing else: positive, negative, out_of_office, neutral.\n" +
-        "positive = interested, wants to talk, asks a question, books a call.\n" +
-        "negative = not interested, asks to unsubscribe/stop, do not contact, hostile.\n" +
+        "You label replies to cold sales emails by the sender's intent. Respond with " +
+        "EXACTLY one of these labels and nothing else:\n" +
+        "interested = positive, wants to learn more, asks a genuine question.\n" +
+        "meeting = explicitly wants a call/demo or proposes a time.\n" +
+        "later = interested but not now (e.g. 'circle back next quarter', 'reach out in Q3').\n" +
+        "not_interested = a clear no, but not asking to be removed.\n" +
+        "unsubscribe = asks to stop/unsubscribe/remove/do-not-contact, or is hostile about being emailed.\n" +
+        "wrong_person = says they aren't the right contact or refers you to someone else.\n" +
         "out_of_office = an automatic away/vacation/parental-leave/left-the-company reply.\n" +
-        "neutral = anything else (forwarded, unclear, asks who you are).",
+        "neutral = anything else (forwarded, unclear, just 'who is this?').",
       messages: [{ role: "user", content: text }],
     });
 
@@ -56,7 +68,9 @@ export async function classifyReply(
       .join(" ")
       .toLowerCase();
 
-    return REPLY_CATEGORIES.find((c) => out.includes(c)) ?? "neutral";
+    // Match longest label first so "interested" doesn't shadow "not_interested".
+    const byLength = [...REPLY_CATEGORIES].sort((a, b) => b.length - a.length);
+    return byLength.find((c) => out.includes(c)) ?? "neutral";
   } catch {
     return null;
   }

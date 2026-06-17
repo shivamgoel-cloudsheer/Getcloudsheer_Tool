@@ -4,6 +4,7 @@ import { auth } from "@/auth";
 import { db } from "@/db";
 import { campaigns, recipients } from "@/db/schema";
 import { isAdminEmail } from "@/lib/admin";
+import { suppressEmail } from "@/lib/suppress";
 
 const schema = z.object({
   recipientIds: z.array(z.string().uuid()).min(1).max(5000),
@@ -12,7 +13,16 @@ const schema = z.object({
   // "category" -> manually set the reply segmentation tag
   action: z.enum(["pending", "delete", "category"]),
   category: z
-    .enum(["positive", "negative", "out_of_office", "neutral"])
+    .enum([
+      "interested",
+      "meeting",
+      "later",
+      "not_interested",
+      "unsubscribe",
+      "wrong_person",
+      "out_of_office",
+      "neutral",
+    ])
     .optional(),
 });
 
@@ -30,7 +40,7 @@ export async function POST(
   const { id } = await params;
   const admin = isAdminEmail(session.user.email);
   const [campaign] = await db
-    .select({ id: campaigns.id })
+    .select({ id: campaigns.id, userId: campaigns.userId })
     .from(campaigns)
     .where(
       and(
@@ -62,7 +72,13 @@ export async function POST(
           inArray(recipients.id, recipientIds)
         )
       )
-      .returning({ id: recipients.id });
+      .returning({ id: recipients.id, email: recipients.email });
+    // Tagging a reply do-not-contact suppresses the address everywhere.
+    if (category === "unsubscribe") {
+      for (const r of updated) {
+        await suppressEmail(r.email, campaign.userId, "reply");
+      }
+    }
     return Response.json({ updated: updated.length });
   }
 

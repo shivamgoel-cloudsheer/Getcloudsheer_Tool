@@ -28,7 +28,7 @@ import { capForDayFn, WARMUP_WINDOW_DAYS } from "@/lib/warmup";
 import { tzDateKey, tzOffsetMinutes } from "@/lib/timezone";
 import { resolveRecipientZone } from "@/lib/geo";
 import { DEFAULT_FROM_ADDRESS, emailFromAddress } from "@/lib/senders";
-import { cancelScheduledForEmail } from "@/lib/suppress";
+import { cancelScheduledForEmail, suppressEmail } from "@/lib/suppress";
 
 // "delivered"/"opened"/"clicked" are Resend-era statuses kept so historical
 // recipients still get follow-ups and reply detection.
@@ -208,6 +208,10 @@ export async function processUser(userId: string): Promise<ProcessResult> {
             ...(category ? { replyCategory: category } : {}),
           })
           .where(eq(recipients.id, r.id));
+        // A do-not-contact reply suppresses the address across all campaigns.
+        if (category === "unsubscribe") {
+          await suppressEmail(r.email, userId, "reply");
+        }
         result.repliesFound++;
       }
     }

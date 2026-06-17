@@ -87,17 +87,28 @@ type ReplyView = {
 const ENGAGED = ["delivered", "opened", "clicked", "replied"];
 
 const REPLY_CATEGORY_ORDER = [
-  "positive",
-  "negative",
+  "interested",
+  "meeting",
+  "later",
+  "not_interested",
+  "unsubscribe",
+  "wrong_person",
   "out_of_office",
   "neutral",
 ] as const;
 
 const REPLY_CATEGORY_META: Record<string, { label: string; cls: string }> = {
-  positive: { label: "Positive", cls: "bg-emerald-50 text-emerald-700 ring-emerald-200" },
-  negative: { label: "Negative", cls: "bg-red-50 text-red-700 ring-red-200" },
-  out_of_office: { label: "Out of office", cls: "bg-amber-50 text-amber-700 ring-amber-200" },
-  neutral: { label: "Neutral", cls: "bg-slate-100 text-slate-600 ring-slate-200" },
+  interested: { label: "Interested", cls: "bg-emerald-50 text-emerald-700 ring-emerald-200" },
+  meeting: { label: "Meeting request", cls: "bg-teal-50 text-teal-700 ring-teal-200" },
+  later: { label: "Not now / Later", cls: "bg-amber-50 text-amber-700 ring-amber-200" },
+  not_interested: { label: "Not interested", cls: "bg-orange-50 text-orange-700 ring-orange-200" },
+  unsubscribe: { label: "Unsubscribe", cls: "bg-red-50 text-red-700 ring-red-200" },
+  wrong_person: { label: "Wrong person", cls: "bg-violet-50 text-violet-700 ring-violet-200" },
+  out_of_office: { label: "Out of office", cls: "bg-slate-100 text-slate-600 ring-slate-200" },
+  neutral: { label: "Neutral", cls: "bg-slate-100 text-slate-500 ring-slate-200" },
+  // Legacy fallback for any rows tagged before the taxonomy change.
+  positive: { label: "Interested", cls: "bg-emerald-50 text-emerald-700 ring-emerald-200" },
+  negative: { label: "Not interested", cls: "bg-orange-50 text-orange-700 ring-orange-200" },
 };
 
 export default function CampaignPage({
