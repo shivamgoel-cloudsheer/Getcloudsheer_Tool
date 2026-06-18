@@ -37,6 +37,7 @@ type Recipient = {
   variant: "A" | "B";
   sequenceStep: number;
   repliedAt: string | null;
+  replyCategory: string | null;
 };
 
 type Stagger = {
@@ -102,6 +103,32 @@ const STATUS_ORDER = [
   "complained",
   "failed",
 ];
+
+// Reply segmentation (intent of each reply). Mirrors the campaign page taxonomy.
+const REPLY_CATEGORY_ORDER = [
+  "interested",
+  "meeting",
+  "later",
+  "not_interested",
+  "unsubscribe",
+  "wrong_person",
+  "out_of_office",
+  "neutral",
+];
+
+const REPLY_CATEGORY_META: Record<string, { label: string; bar: string }> = {
+  interested: { label: "Interested", bar: "bg-emerald-500" },
+  meeting: { label: "Meeting request", bar: "bg-teal-500" },
+  later: { label: "Not now / Later", bar: "bg-amber-500" },
+  not_interested: { label: "Not interested", bar: "bg-orange-500" },
+  unsubscribe: { label: "Unsubscribe", bar: "bg-red-500" },
+  wrong_person: { label: "Wrong person", bar: "bg-violet-500" },
+  out_of_office: { label: "Out of office", bar: "bg-slate-400" },
+  neutral: { label: "Neutral", bar: "bg-slate-300" },
+  // Legacy values from before the taxonomy change.
+  positive: { label: "Interested", bar: "bg-emerald-500" },
+  negative: { label: "Not interested", bar: "bg-orange-500" },
+};
 
 const pct = (n: number, d: number) => (d > 0 ? Math.round((n / d) * 100) : 0);
 
@@ -297,6 +324,20 @@ function CampaignAnalytics({ data }: { data: StatusData }) {
   const suppressed = counts.suppressed ?? 0;
   const failed = counts.failed ?? 0;
 
+  // Reply segmentation breakdown: how each reply was classified by intent.
+  const repliesTotal = recipients.filter((r) => r.repliedAt).length;
+  const catCounts: Record<string, number> = {};
+  for (const r of recipients) {
+    if (r.replyCategory)
+      catCounts[r.replyCategory] = (catCounts[r.replyCategory] ?? 0) + 1;
+  }
+  const taggedTotal = Object.values(catCounts).reduce((s, n) => s + n, 0);
+  const untaggedReplies = Math.max(repliesTotal - taggedTotal, 0);
+  const presentCats = [
+    ...REPLY_CATEGORY_ORDER.filter((c) => catCounts[c]),
+    ...Object.keys(catCounts).filter((c) => !REPLY_CATEGORY_ORDER.includes(c)),
+  ];
+
   // A/B split, computed from the returned recipients
   const REACHED = ["sent", "delivered", "opened", "clicked", "replied", "bounced"];
   const variantStats = (v: "A" | "B") => {
@@ -412,6 +453,59 @@ function CampaignAnalytics({ data }: { data: StatusData }) {
           <span>Failed: {failed}</span>
         </div>
       </Section>
+
+      {/* Reply breakdown */}
+      {repliesTotal > 0 && (
+        <Section icon={MessageSquareReply} title="Reply breakdown">
+          <div className="space-y-2.5">
+            {presentCats.map((c) => {
+              const n = catCounts[c];
+              const meta = REPLY_CATEGORY_META[c];
+              return (
+                <div key={c} className="flex items-center gap-3">
+                  <span className="w-28 shrink-0 text-xs text-slate-600">
+                    {meta?.label ?? c}
+                  </span>
+                  <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-slate-100">
+                    <div
+                      className={`h-full rounded-full ${meta?.bar ?? "bg-slate-400"}`}
+                      style={{ width: `${Math.max(pct(n, repliesTotal), 2)}%` }}
+                    />
+                  </div>
+                  <span className="w-16 shrink-0 text-right text-xs text-slate-500">
+                    {n} · {pct(n, repliesTotal)}%
+                  </span>
+                </div>
+              );
+            })}
+            {untaggedReplies > 0 && (
+              <div className="flex items-center gap-3">
+                <span className="w-28 shrink-0 text-xs text-slate-400">
+                  Untagged
+                </span>
+                <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-slate-100">
+                  <div
+                    className="h-full rounded-full bg-slate-200"
+                    style={{
+                      width: `${Math.max(pct(untaggedReplies, repliesTotal), 2)}%`,
+                    }}
+                  />
+                </div>
+                <span className="w-16 shrink-0 text-right text-xs text-slate-500">
+                  {untaggedReplies} · {pct(untaggedReplies, repliesTotal)}%
+                </span>
+              </div>
+            )}
+          </div>
+          <div className="mt-4 flex flex-wrap gap-x-6 gap-y-1 text-xs text-slate-400">
+            <span>Total replies: {repliesTotal}</span>
+            <span>Tagged: {taggedTotal}</span>
+            {untaggedReplies > 0 && (
+              <span>Open View reply on a row to classify untagged ones.</span>
+            )}
+          </div>
+        </Section>
+      )}
 
       {/* A/B test */}
       {campaign.hasVariantB && (
