@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import {
+  ArrowRight,
   BarChart3,
   CalendarClock,
   CheckCheck,
@@ -38,6 +39,8 @@ type Recipient = {
   sequenceStep: number;
   repliedAt: string | null;
   replyCategory: string | null;
+  replySubject: string | null;
+  replySnippet: string | null;
 };
 
 type Stagger = {
@@ -116,18 +119,71 @@ const REPLY_CATEGORY_ORDER = [
   "neutral",
 ];
 
-const REPLY_CATEGORY_META: Record<string, { label: string; bar: string }> = {
-  interested: { label: "Interested", bar: "bg-emerald-500" },
-  meeting: { label: "Meeting request", bar: "bg-teal-500" },
-  later: { label: "Not now / Later", bar: "bg-amber-500" },
-  not_interested: { label: "Not interested", bar: "bg-orange-500" },
-  unsubscribe: { label: "Unsubscribe", bar: "bg-red-500" },
-  wrong_person: { label: "Wrong person", bar: "bg-violet-500" },
-  out_of_office: { label: "Out of office", bar: "bg-slate-400" },
-  neutral: { label: "Neutral", bar: "bg-slate-300" },
+const REPLY_CATEGORY_META: Record<
+  string,
+  { label: string; bar: string; chip: string; next: string }
+> = {
+  interested: {
+    label: "Interested",
+    bar: "bg-emerald-500",
+    chip: "bg-emerald-50 text-emerald-700 ring-emerald-200",
+    next: "Reply fast with a booking link or two time slots to lock in a call.",
+  },
+  meeting: {
+    label: "Meeting request",
+    bar: "bg-teal-500",
+    chip: "bg-teal-50 text-teal-700 ring-teal-200",
+    next: "Confirm a time and send the calendar invite.",
+  },
+  later: {
+    label: "Not now / Later",
+    bar: "bg-amber-500",
+    chip: "bg-amber-50 text-amber-700 ring-amber-200",
+    next: "Snooze and follow up when they asked you to.",
+  },
+  not_interested: {
+    label: "Not interested",
+    bar: "bg-orange-500",
+    chip: "bg-orange-50 text-orange-700 ring-orange-200",
+    next: "Close the thread - no further outreach for now.",
+  },
+  unsubscribe: {
+    label: "Unsubscribe",
+    bar: "bg-red-500",
+    chip: "bg-red-50 text-red-700 ring-red-200",
+    next: "Suppressed automatically - do not contact again.",
+  },
+  wrong_person: {
+    label: "Wrong person",
+    bar: "bg-violet-500",
+    chip: "bg-violet-50 text-violet-700 ring-violet-200",
+    next: "Ask for the right contact and re-route the outreach.",
+  },
+  out_of_office: {
+    label: "Out of office",
+    bar: "bg-slate-400",
+    chip: "bg-slate-100 text-slate-600 ring-slate-200",
+    next: "Wait for their return date, then resend.",
+  },
+  neutral: {
+    label: "Neutral",
+    bar: "bg-slate-300",
+    chip: "bg-slate-100 text-slate-500 ring-slate-200",
+    next: "Read the reply and decide the next move.",
+  },
   // Legacy values from before the taxonomy change.
-  positive: { label: "Interested", bar: "bg-emerald-500" },
-  negative: { label: "Not interested", bar: "bg-orange-500" },
+  positive: {
+    label: "Interested",
+    bar: "bg-emerald-500",
+    chip: "bg-emerald-50 text-emerald-700 ring-emerald-200",
+    next: "Reply fast with a booking link or two time slots to lock in a call.",
+  },
+  negative: {
+    label: "Not interested",
+    bar: "bg-orange-500",
+    chip: "bg-orange-50 text-orange-700 ring-orange-200",
+    next: "Close the thread - no further outreach for now.",
+  },
 };
 
 const pct = (n: number, d: number) => (d > 0 ? Math.round((n / d) * 100) : 0);
@@ -338,6 +394,20 @@ function CampaignAnalytics({ data }: { data: StatusData }) {
     ...Object.keys(catCounts).filter((c) => !REPLY_CATEGORY_ORDER.includes(c)),
   ];
 
+  // Detailed reply log: every reply, hottest intent first, with its text.
+  const catRank = (c: string | null) => {
+    if (!c) return 99;
+    const i = REPLY_CATEGORY_ORDER.indexOf(c);
+    return i === -1 ? 50 : i;
+  };
+  const replyRows = recipients
+    .filter((r) => r.repliedAt || r.replyCategory)
+    .sort((x, y) => {
+      const d = catRank(x.replyCategory) - catRank(y.replyCategory);
+      if (d !== 0) return d;
+      return (y.repliedAt ?? "").localeCompare(x.repliedAt ?? "");
+    });
+
   // A/B split, computed from the returned recipients
   const REACHED = ["sent", "delivered", "opened", "clicked", "replied", "bounced"];
   const variantStats = (v: "A" | "B") => {
@@ -501,9 +571,72 @@ function CampaignAnalytics({ data }: { data: StatusData }) {
             <span>Total replies: {repliesTotal}</span>
             <span>Tagged: {taggedTotal}</span>
             {untaggedReplies > 0 && (
-              <span>Open View reply on a row to classify untagged ones.</span>
+              <span>Untagged replies are classified automatically in the background.</span>
             )}
           </div>
+        </Section>
+      )}
+
+      {/* Detailed reply log with the suggested next step per reply */}
+      {replyRows.length > 0 && (
+        <Section icon={Inbox} title={`All replies (${replyRows.length})`}>
+          <ul className="space-y-2.5">
+            {replyRows.map((r) => {
+              const meta = r.replyCategory
+                ? REPLY_CATEGORY_META[r.replyCategory]
+                : null;
+              return (
+                <li
+                  key={r.id}
+                  className="rounded-xl border border-slate-200 p-3.5"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-slate-800">
+                        {r.name || r.email}
+                      </p>
+                      {r.name && (
+                        <p className="truncate text-xs text-slate-400">
+                          {r.email}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      {r.sequenceStep > 0 && (
+                        <span className="text-xs text-slate-400">
+                          Follow-up {r.sequenceStep}
+                        </span>
+                      )}
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${
+                          meta?.chip ?? "bg-slate-100 text-slate-500 ring-slate-200"
+                        }`}
+                      >
+                        {meta?.label ?? r.replyCategory ?? "Untagged"}
+                      </span>
+                    </div>
+                  </div>
+                  {r.replySubject && (
+                    <p className="mt-2 truncate text-xs font-medium text-slate-600">
+                      {r.replySubject}
+                    </p>
+                  )}
+                  {r.replySnippet && (
+                    <p className="mt-1 line-clamp-2 text-xs text-slate-500">
+                      {r.replySnippet}
+                    </p>
+                  )}
+                  <p className="mt-2 flex items-start gap-1.5 text-xs text-indigo-700">
+                    <ArrowRight size={13} className="mt-0.5 shrink-0" />
+                    <span>
+                      {meta?.next ??
+                        "Being classified - open View reply on the campaign page to read the full message."}
+                    </span>
+                  </p>
+                </li>
+              );
+            })}
+          </ul>
         </Section>
       )}
 
