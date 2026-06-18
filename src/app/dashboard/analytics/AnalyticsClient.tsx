@@ -3,12 +3,16 @@
 import { useEffect, useState } from "react";
 import {
   ArrowRight,
+  AtSign,
   BarChart3,
+  CalendarCheck,
   CalendarClock,
   CheckCheck,
   Clock,
+  Filter,
   FlaskConical,
   Inbox,
+  LayoutDashboard,
   Loader2,
   Mail,
   MailX,
@@ -16,9 +20,19 @@ import {
   Repeat,
   Send,
   Settings2,
+  Sparkles,
+  Target,
+  TrendingUp,
   TriangleAlert,
+  Trophy,
 } from "lucide-react";
 import { StatusChip } from "@/components/ui";
+import {
+  computeMetrics,
+  pct,
+  POSITIVE_CATEGORIES,
+  type Metrics,
+} from "@/lib/analytics";
 
 export type CampaignListItem = {
   id: string;
@@ -37,11 +51,14 @@ type Recipient = {
   status: string;
   variant: "A" | "B";
   sequenceStep: number;
+  lastEmailAt: string | null;
   repliedAt: string | null;
   replyCategory: string | null;
   replySubject: string | null;
   replySnippet: string | null;
 };
+
+type CampaignInsight = { summary: string; actions: string[] };
 
 type Stagger = {
   gapMinutes: number;
@@ -186,8 +203,6 @@ const REPLY_CATEGORY_META: Record<
   },
 };
 
-const pct = (n: number, d: number) => (d > 0 ? Math.round((n / d) * 100) : 0);
-
 function fmt(iso: string | null | undefined, tz?: string | null): string {
   if (!iso) return "-";
   return new Date(iso).toLocaleString(undefined, {
@@ -229,30 +244,46 @@ function StatCard({
 function Section({
   icon: Icon,
   title,
+  action,
   children,
 }: {
   icon: typeof Mail;
   title: string;
+  action?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="mb-4 flex items-center gap-2">
-        <Icon size={15} className="text-indigo-600" />
-        <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Icon size={15} className="text-indigo-600" />
+          <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
+        </div>
+        {action}
       </div>
       {children}
     </div>
   );
 }
 
+// Color cue for bounce rate: green healthy, amber caution, red risk.
+function bounceTone(rate: number): string {
+  if (rate >= 5) return "text-red-600";
+  if (rate >= 3) return "text-amber-600";
+  return "text-emerald-600";
+}
+
+// Sentinel for the cross-campaign overview entry in the left rail.
+const OVERVIEW = "__overview__";
+
 export default function AnalyticsClient({
   campaigns,
 }: {
   campaigns: CampaignListItem[];
 }) {
+  // Land on the cross-campaign overview, like Apollo/Smartlead's home view.
   const [selectedId, setSelectedId] = useState<string | null>(
-    campaigns[0]?.id ?? null
+    campaigns.length > 0 ? OVERVIEW : null
   );
   const [result, setResult] = useState<{
     id: string;
@@ -261,7 +292,7 @@ export default function AnalyticsClient({
   } | null>(null);
 
   useEffect(() => {
-    if (!selectedId) return;
+    if (!selectedId || selectedId === OVERVIEW) return;
     const id = selectedId;
     let cancelled = false;
     fetch(`/api/campaigns/${id}/status`, { cache: "no-store" })
@@ -290,7 +321,8 @@ export default function AnalyticsClient({
   const matched = result && result.id === selectedId ? result : null;
   const data = matched?.data ?? null;
   const error = matched?.error ?? null;
-  const loading = !!selectedId && !matched;
+  const onOverview = selectedId === OVERVIEW;
+  const loading = !!selectedId && !onOverview && !matched;
 
   return (
     <div>
@@ -300,7 +332,8 @@ export default function AnalyticsClient({
           Analytics
         </h1>
         <p className="mt-0.5 text-sm text-slate-500">
-          Pick a campaign to see everything we can measure about it.
+          See the overview across all campaigns, or pick one for the full
+          breakdown.
         </p>
       </div>
 
@@ -310,9 +343,20 @@ export default function AnalyticsClient({
         </div>
       ) : (
         <div className="grid gap-5 lg:grid-cols-[19rem_1fr]">
-          {/* Left rail: campaign list */}
+          {/* Left rail: overview + campaign list */}
           <aside className="lg:sticky lg:top-20 lg:self-start">
-            <ul className="max-h-[75vh] space-y-1.5 overflow-auto pr-1">
+            <button
+              onClick={() => setSelectedId(OVERVIEW)}
+              className={`mb-1.5 flex w-full items-center gap-2 rounded-xl border px-3.5 py-3 text-left text-sm font-medium transition ${
+                onOverview
+                  ? "border-indigo-300 bg-indigo-50/60 text-indigo-700 ring-1 ring-indigo-200"
+                  : "border-slate-200 bg-white text-slate-900 hover:border-slate-300 hover:bg-slate-50"
+              }`}
+            >
+              <LayoutDashboard size={15} />
+              All campaigns overview
+            </button>
+            <ul className="max-h-[70vh] space-y-1.5 overflow-auto pr-1">
               {campaigns.map((c) => {
                 const active = c.id === selectedId;
                 return (
@@ -344,8 +388,9 @@ export default function AnalyticsClient({
             </ul>
           </aside>
 
-          {/* Right panel: analytics */}
+          {/* Right panel: overview or per-campaign analytics */}
           <div className="min-w-0">
+            {onOverview && <OverviewPanel onPick={setSelectedId} />}
             {loading && (
               <div className="flex items-center justify-center gap-2 py-32 text-sm text-slate-500">
                 <Loader2 size={16} className="animate-spin" />
@@ -357,7 +402,9 @@ export default function AnalyticsClient({
                 {error}
               </div>
             )}
-            {data && !loading && <CampaignAnalytics data={data} />}
+            {data && !loading && (
+              <CampaignAnalytics key={data.campaign.id} data={data} />
+            )}
           </div>
         </div>
       )}
@@ -368,25 +415,33 @@ export default function AnalyticsClient({
 function CampaignAnalytics({ data }: { data: StatusData }) {
   const { campaign, counts, recipients, steps } = data;
   const tz = campaign.staggerConfig?.timeZone;
-
   const total = campaign.total;
-  const sent = campaign.sentCount;
-  const replied = counts.replied ?? 0;
-  const bounced = (counts.bounced ?? 0) + (counts.complained ?? 0);
-  const legacyEngaged =
-    (counts.delivered ?? 0) + (counts.opened ?? 0) + (counts.clicked ?? 0);
-  const reached = (counts.sent ?? 0) + legacyEngaged + replied + bounced;
-  const queued = (counts.scheduled ?? 0) + (counts.pending ?? 0);
-  const suppressed = counts.suppressed ?? 0;
-  const failed = counts.failed ?? 0;
 
-  // Reply segmentation breakdown: how each reply was classified by intent.
-  const repliesTotal = recipients.filter((r) => r.repliedAt).length;
+  // Reply segmentation: how each reply was classified by intent.
   const catCounts: Record<string, number> = {};
   for (const r of recipients) {
     if (r.replyCategory)
       catCounts[r.replyCategory] = (catCounts[r.replyCategory] ?? 0) + 1;
   }
+
+  // Funnel + rate metrics, shared definitions with the cross-campaign overview.
+  const m = computeMetrics({
+    recipients: total,
+    byStatus: counts,
+    byCategory: catCounts,
+  });
+  const { reached, queued, suppressed, failed } = m;
+
+  const funnel = [
+    { label: "Recipients", value: m.recipients, color: "bg-slate-400" },
+    { label: "Emailed", value: m.reached, color: "bg-indigo-500" },
+    { label: "Delivered", value: m.delivered, color: "bg-sky-500" },
+    { label: "Replied", value: m.replied, color: "bg-teal-500" },
+    { label: "Positive", value: m.positive, color: "bg-emerald-500" },
+    { label: "Meetings", value: m.meetings, color: "bg-violet-500" },
+  ];
+
+  const repliesTotal = recipients.filter((r) => r.repliedAt).length;
   const taggedTotal = Object.values(catCounts).reduce((s, n) => s + n, 0);
   const untaggedReplies = Math.max(repliesTotal - taggedTotal, 0);
   const presentCats = [
@@ -408,7 +463,7 @@ function CampaignAnalytics({ data }: { data: StatusData }) {
       return (y.repliedAt ?? "").localeCompare(x.repliedAt ?? "");
     });
 
-  // A/B split, computed from the returned recipients
+  // A/B split, computed from the returned recipients.
   const REACHED = ["sent", "delivered", "opened", "clicked", "replied", "bounced"];
   const variantStats = (v: "A" | "B") => {
     const rs = recipients.filter((r) => r.variant === v);
@@ -419,12 +474,40 @@ function CampaignAnalytics({ data }: { data: StatusData }) {
   const a = variantStats("A");
   const b = variantStats("B");
 
-  // Follow-up step distribution (0 = initial email, 1..n = follow-ups)
+  // Follow-up sequence: step occupancy + which step actually earns the replies.
+  const posKeys = new Set<string>(POSITIVE_CATEGORIES);
   const byStep = new Map<number, number>();
+  const repliesByStep = new Map<number, number>();
+  const positiveByStep = new Map<number, number>();
   for (const r of recipients) {
     byStep.set(r.sequenceStep, (byStep.get(r.sequenceStep) ?? 0) + 1);
+    if (r.repliedAt)
+      repliesByStep.set(
+        r.sequenceStep,
+        (repliesByStep.get(r.sequenceStep) ?? 0) + 1
+      );
+    if (r.replyCategory && posKeys.has(r.replyCategory))
+      positiveByStep.set(
+        r.sequenceStep,
+        (positiveByStep.get(r.sequenceStep) ?? 0) + 1
+      );
   }
   const maxStep = Math.max(0, ...steps.map((s) => s.stepNumber));
+  // Best converting step = most replies (ties broken by positive replies).
+  let bestStep = -1;
+  let bestReplies = 0;
+  let bestPos = 0;
+  for (const [step, rc] of repliesByStep) {
+    const pc = positiveByStep.get(step) ?? 0;
+    if (rc > bestReplies || (rc === bestReplies && pc > bestPos)) {
+      bestStep = step;
+      bestReplies = rc;
+      bestPos = pc;
+    }
+  }
+
+  // Activity trend: emails sent + replies bucketed by day in the campaign tz.
+  const trend = buildTrend(recipients, tz);
 
   const sampled = total > recipients.length;
 
@@ -470,28 +553,63 @@ function CampaignAnalytics({ data }: { data: StatusData }) {
         </dl>
       </div>
 
-      {/* Headline stats */}
+      {/* AI insights */}
+      <InsightsPanel campaignId={campaign.id} />
+
+      {/* Headline KPIs - the cold-email metrics that matter */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard icon={Inbox} label="Recipients" value={total} />
-        <StatCard
-          icon={Mail}
-          label="Sent"
-          value={sent}
-          sub={`${pct(sent, total)}% of list`}
-        />
         <StatCard
           icon={MessageSquareReply}
           label="Reply rate"
-          value={reached > 0 ? `${pct(replied, reached)}%` : "-"}
-          sub={`${replied} repl${replied === 1 ? "y" : "ies"}`}
+          value={m.delivered > 0 ? `${m.replyRate}%` : "-"}
+          sub={`${m.replied} of ${m.delivered} delivered`}
+        />
+        <StatCard
+          icon={Target}
+          label="Positive reply rate"
+          value={m.delivered > 0 ? `${m.positiveRate}%` : "-"}
+          sub={`${m.positive} interested or meeting`}
+        />
+        <StatCard
+          icon={CalendarCheck}
+          label="Meetings"
+          value={m.meetings}
+          sub={`${m.meetingRate}% of delivered`}
         />
         <StatCard
           icon={MailX}
           label="Bounce rate"
-          value={reached > 0 ? `${pct(bounced, reached)}%` : "-"}
-          sub={`${bounced} bounced`}
+          value={m.reached > 0 ? `${m.bounceRate}%` : "-"}
+          sub={`${m.bounced} bounced`}
         />
       </div>
+
+      {/* Conversion funnel */}
+      <Section icon={Filter} title="Conversion funnel">
+        <div className="space-y-2.5">
+          {funnel.map((f) => (
+            <div key={f.label} className="flex items-center gap-3">
+              <span className="w-24 shrink-0 text-xs text-slate-600">
+                {f.label}
+              </span>
+              <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-slate-100">
+                <div
+                  className={`h-full rounded-full ${f.color}`}
+                  style={{
+                    width: `${Math.max(
+                      pct(f.value, m.recipients),
+                      f.value > 0 ? 2 : 0
+                    )}%`,
+                  }}
+                />
+              </div>
+              <span className="w-20 shrink-0 text-right text-xs text-slate-500">
+                {f.value} · {pct(f.value, m.recipients)}%
+              </span>
+            </div>
+          ))}
+        </div>
+      </Section>
 
       {/* Delivery breakdown */}
       <Section icon={BarChart3} title="Delivery breakdown">
@@ -679,35 +797,66 @@ function CampaignAnalytics({ data }: { data: StatusData }) {
             {Array.from({ length: maxStep + 1 }, (_, step) => {
               const cfg = steps.find((s) => s.stepNumber === step);
               const n = byStep.get(step) ?? 0;
+              const rep = repliesByStep.get(step) ?? 0;
+              const pos = positiveByStep.get(step) ?? 0;
+              const isBest = step === bestStep && rep > 0;
               return (
                 <div
                   key={step}
                   className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3.5 py-2.5"
                 >
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-slate-800">
+                    <p className="flex items-center gap-2 text-sm font-medium text-slate-800">
                       {step === 0
                         ? "Initial email"
                         : `Follow-up ${step}${
                             cfg ? ` · +${cfg.delayDays}d` : ""
                           }`}
+                      {isBest && (
+                        <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 ring-1 ring-inset ring-emerald-200">
+                          Best
+                        </span>
+                      )}
                     </p>
                     <p className="truncate text-xs text-slate-500">
                       {step === 0 ? campaign.subjectTemplate : cfg?.subjectTemplate}
                     </p>
                   </div>
-                  <span className="shrink-0 text-sm font-semibold text-slate-700">
-                    {n}
-                    <span className="ml-1 text-xs font-normal text-slate-500">
-                      reached this step
-                    </span>
-                  </span>
+                  <div className="flex shrink-0 items-center gap-4 text-right">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-700">{n}</p>
+                      <p className="text-[10px] text-slate-400">at step</p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-teal-700">{rep}</p>
+                      <p className="text-[10px] text-slate-400">
+                        {n > 0 ? `${pct(rep, n)}% reply` : "replies"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-emerald-700">
+                        {pos}
+                      </p>
+                      <p className="text-[10px] text-slate-400">positive</p>
+                    </div>
+                  </div>
                 </div>
               );
             })}
           </div>
         )}
       </Section>
+
+      {/* Activity over time */}
+      {trend.length > 0 && (
+        <Section icon={TrendingUp} title="Activity over time">
+          <TrendChart trend={trend} />
+          <p className="mt-3 text-xs text-slate-400">
+            Sends reflect the most recent email to each recipient; replies are
+            counted on the day they arrived.
+          </p>
+        </Section>
+      )}
 
       {/* Sending configuration */}
       {campaign.staggerConfig && (
@@ -751,6 +900,399 @@ function Detail({ label, value }: { label: string; value: string }) {
     <div>
       <dt className="text-xs text-slate-400">{label}</dt>
       <dd className="font-medium text-slate-800">{value}</dd>
+    </div>
+  );
+}
+
+// ---- Activity trend ------------------------------------------------------
+
+type TrendDay = { day: string; sends: number; replies: number };
+
+function dayKeyOf(iso: string, tz?: string | null): string {
+  // en-CA renders YYYY-MM-DD, which sorts lexicographically.
+  return new Date(iso).toLocaleDateString("en-CA", {
+    timeZone: tz || undefined,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+}
+
+function shortDay(key: string): string {
+  const [y, mo, d] = key.split("-").map(Number);
+  return new Date(y, mo - 1, d).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function buildTrend(recipients: Recipient[], tz?: string | null): TrendDay[] {
+  const sends = new Map<string, number>();
+  const replies = new Map<string, number>();
+  for (const r of recipients) {
+    if (r.lastEmailAt) {
+      const k = dayKeyOf(r.lastEmailAt, tz);
+      sends.set(k, (sends.get(k) ?? 0) + 1);
+    }
+    if (r.repliedAt) {
+      const k = dayKeyOf(r.repliedAt, tz);
+      replies.set(k, (replies.get(k) ?? 0) + 1);
+    }
+  }
+  const keys = [...new Set([...sends.keys(), ...replies.keys()])].sort();
+  return keys
+    .map((day) => ({
+      day,
+      sends: sends.get(day) ?? 0,
+      replies: replies.get(day) ?? 0,
+    }))
+    .slice(-30); // last 30 active days, for readability
+}
+
+function TrendChart({ trend }: { trend: TrendDay[] }) {
+  const max = Math.max(1, ...trend.map((d) => Math.max(d.sends, d.replies)));
+  const h = (v: number) => (v > 0 ? Math.max((v / max) * 100, 4) : 0);
+  const labelEvery = Math.max(1, Math.ceil(trend.length / 6));
+  return (
+    <div>
+      <div className="mb-3 flex items-center gap-4 text-xs text-slate-500">
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block h-2 w-2 rounded-sm bg-indigo-500" />
+          Sends
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block h-2 w-2 rounded-sm bg-teal-500" />
+          Replies
+        </span>
+      </div>
+      <div className="flex h-32 items-end gap-1">
+        {trend.map((d) => (
+          <div
+            key={d.day}
+            className="flex h-full flex-1 items-end justify-center gap-0.5"
+            title={`${shortDay(d.day)}: ${d.sends} sent, ${d.replies} replied`}
+          >
+            <div
+              className="w-1.5 rounded-t bg-indigo-500"
+              style={{ height: `${h(d.sends)}%` }}
+            />
+            <div
+              className="w-1.5 rounded-t bg-teal-500"
+              style={{ height: `${h(d.replies)}%` }}
+            />
+          </div>
+        ))}
+      </div>
+      <div className="mt-1.5 flex gap-1">
+        {trend.map((d, i) => (
+          <div
+            key={d.day}
+            className="flex-1 truncate text-center text-[10px] text-slate-400"
+          >
+            {i % labelEvery === 0 ? shortDay(d.day) : ""}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ---- AI insights ---------------------------------------------------------
+
+function InsightsPanel({ campaignId }: { campaignId: string }) {
+  const [state, setState] = useState<
+    "idle" | "loading" | "done" | "nokey" | "error"
+  >("idle");
+  const [insight, setInsight] = useState<CampaignInsight | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const run = () => {
+    setState("loading");
+    setErr(null);
+    fetch(`/api/campaigns/${campaignId}/insights`, { cache: "no-store" })
+      .then((r) => r.json().then((j) => ({ ok: r.ok, j })))
+      .then(({ ok, j }) => {
+        if (!ok) {
+          setState("error");
+          setErr(j.error ?? "Failed to generate insights");
+          return;
+        }
+        if (!j.insight) {
+          setState("nokey");
+          return;
+        }
+        setInsight(j.insight);
+        setState("done");
+      })
+      .catch((e) => {
+        setState("error");
+        setErr(e instanceof Error ? e.message : "Failed to generate insights");
+      });
+  };
+
+  const button = (
+    <button
+      onClick={run}
+      disabled={state === "loading"}
+      className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700 transition hover:bg-indigo-100 disabled:opacity-50"
+    >
+      {state === "loading" ? (
+        <Loader2 size={13} className="animate-spin" />
+      ) : (
+        <Sparkles size={13} />
+      )}
+      {state === "done" ? "Regenerate" : "Generate"}
+    </button>
+  );
+
+  return (
+    <Section icon={Sparkles} title="AI insights" action={button}>
+      {state === "idle" && (
+        <p className="text-sm text-slate-500">
+          Get an AI read on this campaign&apos;s performance and the best next
+          moves.
+        </p>
+      )}
+      {state === "loading" && (
+        <p className="flex items-center gap-2 text-sm text-slate-500">
+          <Loader2 size={14} className="animate-spin" />
+          Analyzing the numbers
+        </p>
+      )}
+      {state === "nokey" && (
+        <p className="text-sm text-slate-500">
+          Add the Claude API key to enable AI insights.
+        </p>
+      )}
+      {state === "error" && <p className="text-sm text-red-600">{err}</p>}
+      {state === "done" && insight && (
+        <div className="space-y-3">
+          <p className="text-sm leading-relaxed text-slate-700">
+            {insight.summary}
+          </p>
+          {insight.actions.length > 0 && (
+            <ul className="space-y-1.5">
+              {insight.actions.map((act, i) => (
+                <li
+                  key={i}
+                  className="flex items-start gap-2 text-sm text-slate-700"
+                >
+                  <ArrowRight
+                    size={14}
+                    className="mt-0.5 shrink-0 text-indigo-600"
+                  />
+                  <span>{act}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </Section>
+  );
+}
+
+// ---- Cross-campaign overview --------------------------------------------
+
+type OverviewRow = {
+  id: string;
+  name: string;
+  status: string;
+  owner: string | null;
+  sender: string | null;
+  metrics: Metrics;
+};
+
+type OverviewData = {
+  totals: Metrics;
+  campaignCount: number;
+  campaigns: OverviewRow[];
+  senders: { email: string; name: string | null; metrics: Metrics }[];
+};
+
+function OverviewPanel({ onPick }: { onPick: (id: string) => void }) {
+  const [data, setData] = useState<OverviewData | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/analytics/overview`, { cache: "no-store" })
+      .then((r) => r.json().then((j) => ({ ok: r.ok, j })))
+      .then(({ ok, j }) => {
+        if (cancelled) return;
+        if (ok) setData(j);
+        else setError(j.error ?? "Failed to load overview");
+      })
+      .catch((e) => {
+        if (!cancelled)
+          setError(e instanceof Error ? e.message : "Failed to load overview");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (error)
+    return (
+      <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-sm text-red-700">
+        {error}
+      </div>
+    );
+  if (!data)
+    return (
+      <div className="flex items-center justify-center gap-2 py-32 text-sm text-slate-500">
+        <Loader2 size={16} className="animate-spin" />
+        Loading overview
+      </div>
+    );
+  if (data.campaignCount === 0)
+    return (
+      <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-14 text-center text-sm text-slate-500">
+        No campaigns yet.
+      </div>
+    );
+
+  const t = data.totals;
+  return (
+    <div className="space-y-5">
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900">
+          <LayoutDashboard size={18} className="text-indigo-600" />
+          All campaigns
+        </h2>
+        <p className="mt-0.5 text-sm text-slate-500">
+          {data.campaignCount} campaign{data.campaignCount === 1 ? "" : "s"} ·{" "}
+          {t.reached} emailed · {t.replied} replies
+        </p>
+      </div>
+
+      {/* Aggregate KPIs */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <StatCard
+          icon={Mail}
+          label="Emails sent"
+          value={t.reached}
+          sub={`${t.delivered} delivered`}
+        />
+        <StatCard
+          icon={MessageSquareReply}
+          label="Reply rate"
+          value={t.delivered > 0 ? `${t.replyRate}%` : "-"}
+          sub={`${t.replied} replies`}
+        />
+        <StatCard
+          icon={Target}
+          label="Positive reply rate"
+          value={t.delivered > 0 ? `${t.positiveRate}%` : "-"}
+          sub={`${t.positive} positive`}
+        />
+        <StatCard
+          icon={CalendarCheck}
+          label="Meetings"
+          value={t.meetings}
+          sub="across all campaigns"
+        />
+      </div>
+
+      {/* Leaderboard */}
+      <Section icon={Trophy} title="Campaign leaderboard">
+        <p className="mb-3 text-xs text-slate-400">
+          Ranked by positive-reply rate. Click a campaign to open its full
+          analytics.
+        </p>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 text-left text-xs text-slate-400">
+                <th className="py-2 pr-3 font-medium">#</th>
+                <th className="py-2 pr-3 font-medium">Campaign</th>
+                <th className="py-2 pr-3 text-right font-medium">Emailed</th>
+                <th className="py-2 pr-3 text-right font-medium">Reply</th>
+                <th className="py-2 pr-3 text-right font-medium">Positive</th>
+                <th className="py-2 text-right font-medium">Meet</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.campaigns.map((c, i) => (
+                <tr
+                  key={c.id}
+                  onClick={() => onPick(c.id)}
+                  className="cursor-pointer border-b border-slate-100 transition hover:bg-slate-50"
+                >
+                  <td className="py-2.5 pr-3 text-slate-400">{i + 1}</td>
+                  <td className="py-2.5 pr-3">
+                    <div className="font-medium text-slate-800">{c.name}</div>
+                    {c.owner && (
+                      <div className="text-xs text-indigo-600">{c.owner}</div>
+                    )}
+                  </td>
+                  <td className="py-2.5 pr-3 text-right text-slate-600">
+                    {c.metrics.reached}
+                  </td>
+                  <td className="py-2.5 pr-3 text-right text-slate-600">
+                    {c.metrics.delivered > 0 ? `${c.metrics.replyRate}%` : "-"}
+                  </td>
+                  <td className="py-2.5 pr-3 text-right font-semibold text-emerald-700">
+                    {c.metrics.delivered > 0
+                      ? `${c.metrics.positiveRate}%`
+                      : "-"}
+                  </td>
+                  <td className="py-2.5 text-right text-slate-600">
+                    {c.metrics.meetings}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Section>
+
+      {/* Mailbox health */}
+      {data.senders.length > 0 && (
+        <Section icon={AtSign} title="Mailbox health">
+          <div className="space-y-2.5">
+            {data.senders.map((s) => (
+              <div
+                key={s.email}
+                className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3.5 py-2.5"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-slate-800">
+                    {s.name ?? s.email}
+                  </p>
+                  {s.name && (
+                    <p className="truncate text-xs text-slate-400">{s.email}</p>
+                  )}
+                </div>
+                <div className="flex shrink-0 items-center gap-5 text-right">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-700">
+                      {s.metrics.reached}
+                    </p>
+                    <p className="text-[10px] text-slate-400">emailed</p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-teal-700">
+                      {s.metrics.delivered > 0 ? `${s.metrics.replyRate}%` : "-"}
+                    </p>
+                    <p className="text-[10px] text-slate-400">reply</p>
+                  </div>
+                  <div>
+                    <p
+                      className={`text-sm font-semibold ${bounceTone(
+                        s.metrics.bounceRate
+                      )}`}
+                    >
+                      {s.metrics.reached > 0 ? `${s.metrics.bounceRate}%` : "-"}
+                    </p>
+                    <p className="text-[10px] text-slate-400">bounce</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Section>
+      )}
     </div>
   );
 }

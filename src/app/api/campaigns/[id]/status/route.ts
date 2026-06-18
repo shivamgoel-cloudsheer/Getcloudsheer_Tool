@@ -47,6 +47,7 @@ export async function GET(
         sequenceStep: recipients.sequenceStep,
         openedAt: recipients.openedAt,
         clickedAt: recipients.clickedAt,
+        lastEmailAt: recipients.lastEmailAt,
         repliedAt: recipients.repliedAt,
         replySnippet: recipients.replySnippet,
         replySubject: recipients.replySubject,
