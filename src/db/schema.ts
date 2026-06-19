@@ -3,6 +3,7 @@ import {
   text,
   timestamp,
   integer,
+  boolean,
   jsonb,
   uniqueIndex,
   index,
@@ -241,3 +242,141 @@ export const unsubscribes = pgTable("unsubscribe", {
   source: text("source").notNull(), // link | one_click | complaint | bounce
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
+
+// ---------------------------------------------------------------------------
+// X (Twitter) automation. A shared CloudSheer workspace that can connect
+// MULTIPLE X accounts; voices/posts/logs/imports each belong to one account.
+// X tokens live here, separate from the Google tokens in `account` (login
+// stays Google). The 17/day free-tier cap is enforced per X account.
+// ---------------------------------------------------------------------------
+
+export const xAccounts = pgTable(
+  "x_account",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    // Stable X numeric user id; reconnecting the same handle upserts by this.
+    xUserId: text("x_user_id").notNull(),
+    xUsername: text("x_username"),
+    accessToken: text("access_token"),
+    refreshToken: text("refresh_token"),
+    // Unix seconds (OAuth convention). X access tokens live ~2h; the refresh
+    // token rotates on every refresh.
+    expiresAt: integer("expires_at"),
+    scope: text("scope"),
+    // Audit only: which outreach user connected it (the data is shared).
+    connectedByUserId: text("connected_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    // Soft-disconnect: the dispatcher skips accounts with this set.
+    disconnectedAt: timestamp("disconnected_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("x_account_x_user_id_idx").on(t.xUserId)]
+);
+
+export type XStoredStyleProfile = {
+  voice: string;
+  sentenceStyle: string;
+  emojiUse: string;
+  hashtagUse: string;
+  openingPatterns: string[];
+  closingPatterns: string[];
+  vocabulary: string[];
+  topics: string[];
+  avoid: string[];
+  examplePosts: string[];
+};
+
+export const xStyleProfiles = pgTable(
+  "x_style_profile",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    xAccountId: uuid("x_account_id")
+      .notNull()
+      .references(() => xAccounts.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    niche: text("niche").notNull(),
+    sourceCorpus: text("source_corpus").notNull(),
+    profile: jsonb("profile").$type<XStoredStyleProfile>(),
+    model: text("model").notNull().default("claude-haiku-4-5"),
+    autonomous: boolean("autonomous").notNull().default(true),
+    postsPerDay: integer("posts_per_day").notNull().default(3),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("x_style_profile_account_idx").on(t.xAccountId)]
+);
+
+export type XPostStatus =
+  | "draft"
+  | "approved"
+  | "scheduled"
+  | "posting"
+  | "posted"
+  | "failed"
+  | "cancelled";
+
+export const xPosts = pgTable(
+  "x_post",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    xAccountId: uuid("x_account_id")
+      .notNull()
+      .references(() => xAccounts.id, { onDelete: "cascade" }),
+    styleProfileId: uuid("style_profile_id").references(
+      () => xStyleProfiles.id,
+      { onDelete: "set null" }
+    ),
+    body: text("body").notNull(),
+    mediaUrls: jsonb("media_urls").$type<string[]>(),
+    threadParentId: uuid("thread_parent_id"),
+    threadOrder: integer("thread_order").notNull().default(0),
+    sourceTopic: text("source_topic"),
+    sourceUrl: text("source_url"),
+    status: text("status").$type<XPostStatus>().notNull().default("draft"),
+    scheduledFor: timestamp("scheduled_for"),
+    dispatchClaimedAt: timestamp("dispatch_claimed_at"),
+    tweetId: text("tweet_id"),
+    postedAt: timestamp("posted_at"),
+    error: text("error"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("x_post_dispatch_idx").on(t.status, t.scheduledFor),
+    index("x_post_account_idx").on(t.xAccountId),
+    index("x_post_profile_idx").on(t.styleProfileId),
+  ]
+);
+
+export const xPostLog = pgTable(
+  "x_post_log",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    xAccountId: uuid("x_account_id")
+      .notNull()
+      .references(() => xAccounts.id, { onDelete: "cascade" }),
+    tweetId: text("tweet_id"),
+    postedAt: timestamp("posted_at").notNull().defaultNow(),
+  },
+  (t) => [index("x_post_log_account_posted_idx").on(t.xAccountId, t.postedAt)]
+);
+
+export const xImportedTweets = pgTable(
+  "x_imported_tweet",
+  {
+    id: text("id").notNull(), // X tweet id_str
+    xAccountId: uuid("x_account_id")
+      .notNull()
+      .references(() => xAccounts.id, { onDelete: "cascade" }),
+    text: text("text").notNull(),
+    createdAt: timestamp("created_at").notNull(),
+    likes: integer("likes").notNull().default(0),
+    retweets: integer("retweets").notNull().default(0),
+    isReply: boolean("is_reply").notNull().default(false),
+    importedAt: timestamp("imported_at").notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.xAccountId, t.id] }),
+    index("x_imported_tweet_account_created_idx").on(t.xAccountId, t.createdAt),
+  ]
+);

@@ -33,6 +33,6 @@ export const config = {
   // - /api/dispatch (10-min external cron sending due emails, guarded by CRON_SECRET)
   // - /gate (the password form itself), Next assets, favicon
   matcher: [
-    "/((?!gate|u/|api/process|api/dispatch|_next/|favicon\\.ico).*)",
+    "/((?!gate|u/|api/process|api/dispatch|api/x/callback|api/x/dispatch|api/x/process|_next/|favicon\\.ico).*)",
   ],
 };
