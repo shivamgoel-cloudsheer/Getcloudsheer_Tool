@@ -1,9 +1,10 @@
-import { desc, eq, inArray } from "drizzle-orm";
+import { desc, inArray } from "drizzle-orm";
 import { auth } from "@/auth";
 import { db } from "@/db";
 import { campaigns, users } from "@/db/schema";
 import { isAdminEmail } from "@/lib/admin";
 import { getSender } from "@/lib/senders";
+import { visibleCampaignsWhere } from "@/lib/visibility";
 import AnalyticsClient, { type CampaignListItem } from "./AnalyticsClient";
 
 export const dynamic = "force-dynamic";
@@ -24,7 +25,7 @@ export default async function AnalyticsPage() {
       userId: campaigns.userId,
     })
     .from(campaigns)
-    .where(admin ? undefined : eq(campaigns.userId, userId))
+    .where(await visibleCampaignsWhere(userId, session!.user.email))
     .orderBy(desc(campaigns.createdAt));
 
   // Manager view: label each campaign with who created it.
