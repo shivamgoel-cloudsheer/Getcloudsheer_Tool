@@ -1,8 +1,9 @@
-import { desc, eq, inArray, sql } from "drizzle-orm";
+import { desc, inArray, sql } from "drizzle-orm";
 import { auth } from "@/auth";
 import { db } from "@/db";
 import { campaigns, recipients, users } from "@/db/schema";
 import { isAdminEmail } from "@/lib/admin";
+import { visibleCampaignsWhere } from "@/lib/visibility";
 import { computeMetrics, type Metrics } from "@/lib/analytics";
 import {
   DEFAULT_FROM_ADDRESS,
@@ -49,7 +50,7 @@ export async function GET() {
       userId: campaigns.userId,
     })
     .from(campaigns)
-    .where(admin ? undefined : eq(campaigns.userId, userId))
+    .where(await visibleCampaignsWhere(userId, session.user.email))
     .orderBy(desc(campaigns.createdAt));
 
   if (camps.length === 0) {

@@ -10,7 +10,7 @@ import { auth, signIn } from "@/auth";
 import { db } from "@/db";
 import { users, accounts } from "@/db/schema";
 import { hasSendScope } from "@/lib/google";
-import { allowedSenderDomains } from "@/lib/senders";
+import { allowedSenderDomains, isAllowedSenderEmail } from "@/lib/senders";
 
 export const dynamic = "force-dynamic";
 
@@ -18,14 +18,17 @@ export default async function SendersPage() {
   await auth(); // layout already redirects unauthenticated users
 
   // Every Google account that has signed in is a "connected mailbox". It can
-  // send once its grant includes the gmail.send scope.
-  const rows = await db
+  // send once its grant includes the gmail.send scope. Only show mailboxes on
+  // a domain this instance is allowed to send from, so accounts belonging to
+  // other apps that share this database (e.g. cloudsheer.com) don't appear.
+  const allRows = await db
     .select({ email: users.email, name: users.name, scope: accounts.scope })
     .from(users)
     .innerJoin(
       accounts,
       and(eq(accounts.userId, users.id), eq(accounts.provider, "google"))
     );
+  const rows = allRows.filter((r) => isAllowedSenderEmail(r.email));
 
   type Box = { email: string; name: string | null; sendReady: boolean };
   const byDomain = new Map<string, Box[]>();

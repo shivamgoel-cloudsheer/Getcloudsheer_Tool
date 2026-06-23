@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { desc, eq, inArray, sql } from "drizzle-orm";
+import { desc, inArray, sql } from "drizzle-orm";
 import {
   ChevronRight,
   Clock,
@@ -15,6 +15,7 @@ import { campaigns, recipients, users } from "@/db/schema";
 import { StatusChip } from "@/components/ui";
 import { isAdminEmail } from "@/lib/admin";
 import { getSender } from "@/lib/senders";
+import { visibleCampaignsWhere } from "@/lib/visibility";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +28,7 @@ export default async function DashboardPage() {
   const list = await db
     .select()
     .from(campaigns)
-    .where(admin ? undefined : eq(campaigns.userId, userId))
+    .where(await visibleCampaignsWhere(userId, session!.user.email))
     .orderBy(desc(campaigns.createdAt));
 
   // In manager view, label each campaign with who created it. Prefer the
