@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -37,8 +37,6 @@ const inputClass =
 
 export default function NewCampaignPage() {
   const router = useRouter();
-  const subjectRef = useRef<HTMLInputElement>(null);
-  const bodyRef = useRef<HTMLTextAreaElement>(null);
 
   const [step, setStep] = useState(0);
   const [sheetUrl, setSheetUrl] = useState("");
@@ -200,25 +198,6 @@ export default function NewCampaignPage() {
         },
       ]
     : SENDERS;
-
-  // Insert a {{placeholder}} at the caret of whichever field's chip was clicked
-  // (Subject and Body each have their own chip row), so a Subject token lands in
-  // Subject and a Body token in Body.
-  function insertAtCursor(field: "subject" | "body", token: string) {
-    const snippet = `{{${token}}}`;
-    const el = field === "subject" ? subjectRef.current : bodyRef.current;
-    const current = field === "subject" ? subject : body;
-    const apply = field === "subject" ? setSubject : setBody;
-    const start = el?.selectionStart ?? current.length;
-    const end = el?.selectionEnd ?? current.length;
-    apply(current.slice(0, start) + snippet + current.slice(end));
-    requestAnimationFrame(() => {
-      if (!el) return;
-      el.focus();
-      const pos = start + snippet.length;
-      el.setSelectionRange(pos, pos);
-    });
-  }
 
   const canCompose = !!preview?.emailColumn;
   const canReview = !!(name.trim() && subject.trim() && body.trim());
@@ -526,7 +505,6 @@ export default function NewCampaignPage() {
                 Subject
               </label>
               <input
-                ref={subjectRef}
                 className={inputClass}
                 placeholder="Quick question, {{Name}}"
                 value={subject}
@@ -538,8 +516,7 @@ export default function NewCampaignPage() {
                   <button
                     key={h}
                     type="button"
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => insertAtCursor("subject", h)}
+                    onClick={() => setSubject((prev) => `${prev}{{${h}}}`)}
                     className="rounded-md border border-slate-200 bg-white px-2 py-1 font-mono text-[11px] text-slate-500 transition hover:border-sky-500/50 hover:text-sky-600"
                   >
                     {`{{${h}}}`}
@@ -552,7 +529,6 @@ export default function NewCampaignPage() {
                 Body
               </label>
               <textarea
-                ref={bodyRef}
                 className={`${inputClass} min-h-48 font-mono text-[13px] leading-relaxed`}
                 placeholder={"Hi {{Name}},\n\n..."}
                 value={body}
@@ -564,8 +540,7 @@ export default function NewCampaignPage() {
                   <button
                     key={h}
                     type="button"
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => insertAtCursor("body", h)}
+                    onClick={() => setBody((prev) => `${prev}{{${h}}}`)}
                     className="rounded-md border border-slate-200 bg-white px-2 py-1 font-mono text-[11px] text-slate-500 transition hover:border-sky-500/50 hover:text-sky-600"
                   >
                     {`{{${h}}}`}
