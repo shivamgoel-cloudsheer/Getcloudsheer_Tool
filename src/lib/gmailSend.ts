@@ -54,7 +54,7 @@ export class GmailSendError extends Error {
 /** Deterministic-enough RFC Message-ID we control, so follow-ups can
  *  reference the original without refetching it from Gmail. */
 export function newRfcMessageId(recipientId: string, step: number): string {
-  return `<cs.${recipientId}.s${step}.${Date.now().toString(36)}@cloudsheer.com>`;
+  return `<cs.${recipientId}.s${step}.${Date.now().toString(36)}@getcloudsheer.com>`;
 }
 
 /** RFC 2047 B-encoding, only when the value actually needs it. */

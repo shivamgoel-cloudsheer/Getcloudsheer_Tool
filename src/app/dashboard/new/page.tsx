@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { renderTemplate } from "@/lib/template";
 import { lintContent } from "@/lib/linter";
+import { SENDERS, defaultSignatureFor } from "@/lib/senders";
 
 type Preview = {
   sheetId: string;
@@ -30,34 +31,6 @@ const STEPS = [
   { icon: PencilLine, label: "Compose" },
   { icon: Rocket, label: "Review" },
 ];
-
-const COMPANY = "Cloudsheer Consulting";
-
-const SENDERS = [
-  {
-    name: "Shubham",
-    email: "shubham@cloudsheer.com",
-    signature: `Regards,\nShubham\nVP, Growth & Operations\n${COMPANY}`,
-  },
-  {
-    name: "Bharat",
-    email: "bharat@cloudsheer.com",
-    signature: `Regards,\nBharat\nHead of Operations\n${COMPANY}`,
-  },
-  {
-    name: "Tushar",
-    email: "tushar@cloudsheer.com",
-    signature: `Regards,\nTushar\nFounder\n${COMPANY}`,
-  },
-  {
-    name: "Shivam",
-    email: "shivam.goel@cloudsheer.com",
-    signature: `Regards,\nShivam\n${COMPANY}`,
-  },
-];
-
-const defaultSignature = (name: string) =>
-  name ? `Regards,\n${name}\n${COMPANY}` : `Regards,\n${COMPANY}`;
 
 const inputClass =
   "w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder-slate-400 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30";
@@ -76,8 +49,8 @@ export default function NewCampaignPage() {
   const [abEnabled, setAbEnabled] = useState(false);
   const [subjectB, setSubjectB] = useState("");
   const [bodyB, setBodyB] = useState("");
-  const [fromName, setFromName] = useState("Shubham");
-  const [fromEmail, setFromEmail] = useState("shubham@cloudsheer.com");
+  const [fromName, setFromName] = useState(SENDERS[0].name);
+  const [fromEmail, setFromEmail] = useState(SENDERS[0].email);
   const [signature, setSignature] = useState(SENDERS[0].signature);
   const [sigTouched, setSigTouched] = useState(false);
   // email -> can this mailbox send via Gmail right now?
@@ -85,7 +58,7 @@ export default function NewCampaignPage() {
     string,
     { linked: boolean; sendReady: boolean }
   > | null>(null);
-  // The signed-in user, when they're a cloudsheer.com mailbox that isn't a
+  // The signed-in user, when they're an allowed-domain mailbox that isn't a
   // preset sender - they can still send from their own inbox.
   const [me, setMe] = useState<{
     name: string;
@@ -213,7 +186,7 @@ export default function NewCampaignPage() {
     }
   }
 
-  // Preset senders plus the signed-in user's own mailbox (any cloudsheer.com
+  // Preset senders plus the signed-in user's own mailbox (any allowed-domain
   // login), so anyone on the team can send from their own inbox.
   const senderOptions = me
     ? [
@@ -221,7 +194,7 @@ export default function NewCampaignPage() {
         {
           name: me.name || me.email.split("@")[0],
           email: me.email,
-          signature: defaultSignature(me.name || me.email.split("@")[0]),
+          signature: defaultSignatureFor(me.name || me.email.split("@")[0]),
         },
       ]
     : SENDERS;
