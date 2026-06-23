@@ -68,7 +68,11 @@ export async function POST(request: Request) {
     parsed.data.signature?.trim() ||
     (fromAddress ? signatureFor(fromAddress) : null);
 
-  const sheetTab = parsed.data.sheetTab?.trim() || null;
+  // Use the tab name EXACTLY as selected - Google Sheets tab names are
+  // space-sensitive, so trimming would break a tab whose name has a leading or
+  // trailing space (preview reads it fine, then a trimmed create 400s). Only
+  // treat an empty/whitespace-only value as "no tab".
+  const sheetTab = parsed.data.sheetTab?.trim() ? parsed.data.sheetTab : null;
 
   const sheetId = parseSheetUrl(sheetUrl);
   if (!sheetId) {
