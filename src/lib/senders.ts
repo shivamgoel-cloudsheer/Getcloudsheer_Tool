@@ -52,28 +52,28 @@ const ADDRESS =
 
 export const SENDERS: Sender[] = [
   {
-    name: "Shubham",
-    email: "shubham@getcloudsheer.com",
+    name: "Adrian Stanley",
+    email: "adrian@getcloudsheer.com",
     mailingAddress: ADDRESS,
-    signature: `Regards,\nShubham\nVP, Growth & Operations\n${COMPANY}`,
+    signature: `Regards,\nAdrian\n${COMPANY}`,
   },
   {
-    name: "Bharat",
-    email: "bharat@getcloudsheer.com",
+    name: "Brittney Marshall",
+    email: "brittney@getcloudsheer.com",
     mailingAddress: ADDRESS,
-    signature: `Regards,\nBharat\nHead of Operations\n${COMPANY}`,
+    signature: `Regards,\nBrittney\n${COMPANY}`,
   },
   {
-    name: "Tushar",
-    email: "tushar@getcloudsheer.com",
+    name: "Lauren Bailey",
+    email: "lauren@getcloudsheer.com",
     mailingAddress: ADDRESS,
-    signature: `Regards,\nTushar\nFounder\n${COMPANY}`,
+    signature: `Regards,\nLauren\n${COMPANY}`,
   },
   {
-    name: "Shivam",
-    email: "shivam.goel@getcloudsheer.com",
+    name: "Nicholas Guerrant",
+    email: "nicholas@getcloudsheer.com",
     mailingAddress: ADDRESS,
-    signature: `Regards,\nShivam\n${COMPANY}`,
+    signature: `Regards,\nNicholas\n${COMPANY}`,
   },
 ];
 
