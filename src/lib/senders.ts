@@ -26,7 +26,7 @@ const COMPANY = "Cloudsheer Consulting";
  * any signed-in account to send from its own mailbox - safe only because Google
  * OAuth (the "Internal" consent screen) already limits who can sign in at all.
  */
-const DEFAULT_SENDER_DOMAINS = ["cloudsheer.com", "getcloudsheer.com"];
+const DEFAULT_SENDER_DOMAINS = ["getcloudsheer.com"];
 
 export function allowedSenderDomains(): string[] {
   const raw = process.env.ALLOWED_SENDER_DOMAINS?.trim();
@@ -53,25 +53,25 @@ const ADDRESS =
 export const SENDERS: Sender[] = [
   {
     name: "Shubham",
-    email: "shubham@cloudsheer.com",
+    email: "shubham@getcloudsheer.com",
     mailingAddress: ADDRESS,
     signature: `Regards,\nShubham\nVP, Growth & Operations\n${COMPANY}`,
   },
   {
     name: "Bharat",
-    email: "bharat@cloudsheer.com",
+    email: "bharat@getcloudsheer.com",
     mailingAddress: ADDRESS,
     signature: `Regards,\nBharat\nHead of Operations\n${COMPANY}`,
   },
   {
     name: "Tushar",
-    email: "tushar@cloudsheer.com",
+    email: "tushar@getcloudsheer.com",
     mailingAddress: ADDRESS,
     signature: `Regards,\nTushar\nFounder\n${COMPANY}`,
   },
   {
     name: "Shivam",
-    email: "shivam.goel@cloudsheer.com",
+    email: "shivam.goel@getcloudsheer.com",
     mailingAddress: ADDRESS,
     signature: `Regards,\nShivam\n${COMPANY}`,
   },
