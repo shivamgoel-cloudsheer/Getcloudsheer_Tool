@@ -20,7 +20,6 @@ import {
   Repeat,
   Send,
   Settings2,
-  Sparkles,
   Target,
   TrendingUp,
   TriangleAlert,
@@ -57,8 +56,6 @@ type Recipient = {
   replySubject: string | null;
   replySnippet: string | null;
 };
-
-type CampaignInsight = { summary: string; actions: string[] };
 
 type Stagger = {
   gapMinutes: number;
@@ -553,9 +550,6 @@ function CampaignAnalytics({ data }: { data: StatusData }) {
         </dl>
       </div>
 
-      {/* AI insights */}
-      <InsightsPanel campaignId={campaign.id} />
-
       {/* Headline KPIs - the cold-email metrics that matter */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard
@@ -994,101 +988,6 @@ function TrendChart({ trend }: { trend: TrendDay[] }) {
         ))}
       </div>
     </div>
-  );
-}
-
-// ---- AI insights ---------------------------------------------------------
-
-function InsightsPanel({ campaignId }: { campaignId: string }) {
-  const [state, setState] = useState<
-    "idle" | "loading" | "done" | "nokey" | "error"
-  >("idle");
-  const [insight, setInsight] = useState<CampaignInsight | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-
-  const run = () => {
-    setState("loading");
-    setErr(null);
-    fetch(`/api/campaigns/${campaignId}/insights`, { cache: "no-store" })
-      .then((r) => r.json().then((j) => ({ ok: r.ok, j })))
-      .then(({ ok, j }) => {
-        if (!ok) {
-          setState("error");
-          setErr(j.error ?? "Failed to generate insights");
-          return;
-        }
-        if (!j.insight) {
-          setState("nokey");
-          return;
-        }
-        setInsight(j.insight);
-        setState("done");
-      })
-      .catch((e) => {
-        setState("error");
-        setErr(e instanceof Error ? e.message : "Failed to generate insights");
-      });
-  };
-
-  const button = (
-    <button
-      onClick={run}
-      disabled={state === "loading"}
-      className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700 transition hover:bg-indigo-100 disabled:opacity-50"
-    >
-      {state === "loading" ? (
-        <Loader2 size={13} className="animate-spin" />
-      ) : (
-        <Sparkles size={13} />
-      )}
-      {state === "done" ? "Regenerate" : "Generate"}
-    </button>
-  );
-
-  return (
-    <Section icon={Sparkles} title="AI insights" action={button}>
-      {state === "idle" && (
-        <p className="text-sm text-slate-500">
-          Get an AI read on this campaign&apos;s performance and the best next
-          moves.
-        </p>
-      )}
-      {state === "loading" && (
-        <p className="flex items-center gap-2 text-sm text-slate-500">
-          <Loader2 size={14} className="animate-spin" />
-          Analyzing the numbers
-        </p>
-      )}
-      {state === "nokey" && (
-        <p className="text-sm text-slate-500">
-          Add the Claude API key to enable AI insights.
-        </p>
-      )}
-      {state === "error" && <p className="text-sm text-red-600">{err}</p>}
-      {state === "done" && insight && (
-        <div className="space-y-3">
-          <p className="text-sm leading-relaxed text-slate-700">
-            {insight.summary}
-          </p>
-          {insight.actions.length > 0 && (
-            <ul className="space-y-1.5">
-              {insight.actions.map((act, i) => (
-                <li
-                  key={i}
-                  className="flex items-start gap-2 text-sm text-slate-700"
-                >
-                  <ArrowRight
-                    size={14}
-                    className="mt-0.5 shrink-0 text-indigo-600"
-                  />
-                  <span>{act}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-    </Section>
   );
 }
 

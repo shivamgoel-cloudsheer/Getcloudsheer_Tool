@@ -5,8 +5,6 @@ import { campaigns, recipients } from "@/db/schema";
 import { isAdminEmail } from "@/lib/admin";
 import { getAccessTokenForSender } from "@/lib/google";
 import { fetchMessageBody, findRepliesFrom } from "@/lib/gmail";
-import { classifyReply } from "@/lib/classifyReply";
-import { suppressEmail } from "@/lib/suppress";
 import { DEFAULT_FROM_ADDRESS, emailFromAddress } from "@/lib/senders";
 
 // Loads the full body of a recipient's latest reply, on demand. The reply
@@ -73,19 +71,14 @@ export async function GET(
         );
       }
       messageId = info.messageId;
-      const category = await classifyReply(info.subject, info.snippet);
       await db
         .update(recipients)
         .set({
           replyMessageId: info.messageId,
           replySnippet: info.snippet || null,
           replySubject: info.subject || null,
-          ...(category ? { replyCategory: category } : {}),
         })
         .where(eq(recipients.id, recipientId));
-      if (category === "unsubscribe") {
-        await suppressEmail(recipient.email, campaign.userId, "reply");
-      }
     }
 
     const message = await fetchMessageBody(token, messageId);

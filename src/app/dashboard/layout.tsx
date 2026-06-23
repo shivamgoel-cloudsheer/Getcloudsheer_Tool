@@ -53,12 +53,6 @@ export default async function DashboardLayout({
               >
                 Mailboxes
               </Link>
-              <Link
-                href="/dashboard/x"
-                className="text-slate-500 transition hover:text-slate-900"
-              >
-                X
-              </Link>
             </nav>
           </div>
           <div className="flex items-center gap-3">

@@ -10,7 +10,6 @@ import {
 } from "@/db/schema";
 import { findRepliesFrom } from "@/lib/gmail";
 import { findBouncedAddresses } from "@/lib/gmailBounce";
-import { classifyReply } from "@/lib/classifyReply";
 import {
   getAccessTokenForSender,
   getSenderAccount,
@@ -28,7 +27,7 @@ import { capForDayFn, WARMUP_WINDOW_DAYS } from "@/lib/warmup";
 import { tzDateKey, tzOffsetMinutes } from "@/lib/timezone";
 import { resolveRecipientZone } from "@/lib/geo";
 import { DEFAULT_FROM_ADDRESS, emailFromAddress } from "@/lib/senders";
-import { cancelScheduledForEmail, suppressEmail } from "@/lib/suppress";
+import { cancelScheduledForEmail } from "@/lib/suppress";
 
 // "delivered"/"opened"/"clicked" are Resend-era statuses kept so historical
 // recipients still get follow-ups and reply detection.
@@ -193,8 +192,7 @@ export async function processUser(userId: string): Promise<ProcessResult> {
           continue;
         }
         // Scheduling is DB-backed: clearing scheduledFor IS the cancellation.
-        // Capture the reply content + AI category so it can be read/segmented.
-        const category = await classifyReply(reply.subject, reply.snippet);
+        // Capture the reply content so it can be read in-app.
         await db
           .update(recipients)
           .set({
@@ -205,13 +203,8 @@ export async function processUser(userId: string): Promise<ProcessResult> {
             replySnippet: reply.snippet || null,
             replySubject: reply.subject || null,
             replyMessageId: reply.messageId || null,
-            ...(category ? { replyCategory: category } : {}),
           })
           .where(eq(recipients.id, r.id));
-        // A do-not-contact reply suppresses the address across all campaigns.
-        if (category === "unsubscribe") {
-          await suppressEmail(r.email, userId, "reply");
-        }
         result.repliesFound++;
       }
     }
@@ -221,49 +214,6 @@ export async function processUser(userId: string): Promise<ProcessResult> {
       .where(eq(users.id, userId));
   } catch (e) {
     result.errors.push(e instanceof Error ? e.message : "Reply check failed");
-  }
-
-  // --- 1b. Auto-classify replies captured before tagging was available -----
-  // The reply loop above only tags a reply the first time it's seen. Replies
-  // detected before the Claude key was set (or before a transient classifier
-  // error cleared) keep their text but no category, so classify them here on
-  // every run. Bounded per pass to keep Haiku calls and latency in check.
-  try {
-    const untagged = await db
-      .select({
-        id: recipients.id,
-        email: recipients.email,
-        replySubject: recipients.replySubject,
-        replySnippet: recipients.replySnippet,
-      })
-      .from(recipients)
-      .where(
-        and(
-          inArray(recipients.campaignId, campaignIds),
-          isNotNull(recipients.repliedAt),
-          isNull(recipients.replyCategory),
-          isNotNull(recipients.replySnippet)
-        )
-      )
-      .limit(25);
-
-    for (const r of untagged) {
-      const category = await classifyReply(
-        r.replySubject ?? "",
-        r.replySnippet ?? ""
-      );
-      // No key or a transient error returns null - leave it for the next run.
-      if (!category) continue;
-      await db
-        .update(recipients)
-        .set({ replyCategory: category })
-        .where(eq(recipients.id, r.id));
-      if (category === "unsubscribe") {
-        await suppressEmail(r.email, userId, "reply");
-      }
-    }
-  } catch (e) {
-    result.errors.push(e instanceof Error ? e.message : "Reply tagging failed");
   }
 
   // --- 2. Bounce detection from mailer-daemon reports ----------------------

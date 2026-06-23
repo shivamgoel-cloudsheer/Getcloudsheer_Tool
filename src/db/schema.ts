@@ -183,8 +183,9 @@ export const recipients = pgTable(
     replySnippet: text("reply_snippet"),
     replySubject: text("reply_subject"),
     replyMessageId: text("reply_message_id"),
-    // AI segmentation: positive | negative | out_of_office | neutral (null until
-    // classified). Set by Claude Haiku at detection, or manually overridden.
+    // Reply segmentation bucket (null until set). This app sets it only via the
+    // manual in-app override; the column is also written by the original
+    // outreach app that shares this database (which auto-classifies replies).
     replyCategory: text("reply_category"),
     openedAt: timestamp("opened_at"),
     clickedAt: timestamp("clicked_at"),
@@ -244,10 +245,13 @@ export const unsubscribes = pgTable("unsubscribe", {
 });
 
 // ---------------------------------------------------------------------------
-// X (Twitter) automation. A shared CloudSheer workspace that can connect
-// MULTIPLE X accounts; voices/posts/logs/imports each belong to one account.
-// X tokens live here, separate from the Google tokens in `account` (login
-// stays Google). The 17/day free-tier cap is enforced per X account.
+// X (Twitter) automation.
+//
+// NOTE: The X feature was removed from THIS app (Getcloudsheer_Tool). These
+// table definitions are kept ONLY because this app shares its Neon database
+// with the original outreach app, which still owns and uses these tables.
+// Removing them here would make `drizzle-kit push` from this repo DROP them
+// from the shared production DB. Do not run db:push expecting these gone.
 // ---------------------------------------------------------------------------
 
 export const xAccounts = pgTable(
