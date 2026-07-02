@@ -1470,7 +1470,9 @@ export default function CampaignPage({
                   </td>
                 )}
                 <td className="hidden px-4 py-3 text-xs text-slate-500 sm:table-cell">
-                  {r.sequenceStep > 0 ? `+${r.sequenceStep}` : "-"}
+                  {r.sequenceStep > 0
+                    ? `Follow-up ${r.sequenceStep}`
+                    : "Initial"}
                 </td>
                 <td className="hidden px-4 py-3 text-xs text-slate-500 md:table-cell">
                   {r.repliedAt ? new Date(r.repliedAt).toLocaleString() : "-"}
